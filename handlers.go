@@ -128,9 +128,10 @@ var (
 				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 				<input type="hidden" name="accion" value="add_user">
 				<input type="text" name="new_user" placeholder="Nombre de usuario" required>
+				<input type="password" name="new_pass" placeholder="Contraseña (dejar en blanco para que el usuario la cree)">
 				<button type="submit" class="btn-add">Crear Usuario</button>
 			</form>
-			<p><small>* El nuevo usuario creará su propia contraseña al iniciar sesión por primera vez.</small></p>
+			<p><small>* Si dejas la contraseña en blanco, el usuario la creará al iniciar sesión por primera vez.</small></p>
 			<p><small>* Los usuarios podrán generar su código QR para el 2FA entrando a su Perfil.</small></p>
 		</div>
 
@@ -217,7 +218,7 @@ var (
 			<form method="POST">
 				<input type="hidden" name="accion" value="update_profile">
 				<input type="text" name="new_username" value="{{.User.Username}}" required>
-				<input type="password" name="new_password" placeholder="Nueva contraseña (dejar en blanco para no cambiar)">
+				<input type="password" name="new_password" placeholder="Nueva contraseña (opcional)">
 				<button class="btn-add" style="background:#3b82f6;">Guardar Cambios</button>
 			</form>
 		</div>
@@ -438,9 +439,14 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 		} else if accion == "add_user" {
 			// Acciones de Usuarios
 			newUser := r.FormValue("new_user")
+			newPass := r.FormValue("new_pass")
 			if newUser != "" {
+				hash := ""
+				if newPass != "" {
+					hash = hashPassword(newPass)
+				}
 				totp := generateTOTPSecret()
-				db.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, '', ?, 0, 0)", newUser, totp)
+				db.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 0, 0)", newUser, hash, totp)
 				logEvent(fmt.Sprintf("👤 Usuario creado: %s", newUser))
 			}
 		} else if accion == "delete_user" {
