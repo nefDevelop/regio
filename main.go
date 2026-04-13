@@ -57,7 +57,7 @@ func getSubnet(ipStr string) string {
 func main() {
 	adminDomain = os.Getenv("ADMIN_DOMAIN")
 	if adminDomain == "" {
-		log.Fatal("❌ ERROR: Configura ADMIN_DOMAIN")
+		log.Fatal("✕ ERROR: Configura ADMIN_DOMAIN")
 	}
 
 	initDB()
@@ -195,6 +195,6 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
-	log.Printf("🚀 REGIO Multi-User iniciado. Admin en: https://%s/admin", adminDomain)
+	log.Printf("⎈ REGIO Multi-User iniciado. Admin en: https://%s/admin", adminDomain)
 	log.Fatal(http.ListenAndServe(":80", nil))
 }

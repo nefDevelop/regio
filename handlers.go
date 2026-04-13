@@ -319,7 +319,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					}
 					mu.Unlock()
 
-					logEvent(fmt.Sprintf("🔑 Contraseña inicial creada y sesión iniciada: %s", inputUser))
+					logEvent(fmt.Sprintf("⚿ Contraseña inicial creada y sesión iniciada: %s", inputUser))
 					http.Redirect(w, r, "/", http.StatusSeeOther)
 					return
 				}
@@ -353,7 +353,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			}
 			mu.Unlock()
 
-			logEvent(fmt.Sprintf("🟢 Inicio de sesión exitoso: %s (%s)", inputUser, ip))
+			logEvent(fmt.Sprintf("✓ Inicio de sesión exitoso: %s (%s)", inputUser, ip))
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -367,7 +367,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			intentosDB[ip].fallos++
 			if intentosDB[ip].fallos >= 5 {
 				intentosDB[ip].bloqueadoHasta = time.Now().Add(15 * time.Minute)
-				logEvent(fmt.Sprintf("🛑 IP BLOQUEADA (Fuerza bruta): %s", ip))
+				logEvent(fmt.Sprintf("⊘ IP BLOQUEADA (Fuerza bruta): %s", ip))
 			}
 		}
 		// Contador por subred
@@ -378,7 +378,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 				intentosDB[subnet].fallos++
 				if intentosDB[subnet].fallos >= 15 {
 					intentosDB[subnet].bloqueadoHasta = time.Now().Add(1 * time.Hour)
-					logEvent(fmt.Sprintf("🛑 RANGO BLOQUEADO (Ataque múltiple): %s", subnet))
+					logEvent(fmt.Sprintf("⊘ RANGO BLOQUEADO (Ataque múltiple): %s", subnet))
 				}
 			}
 		}
@@ -427,7 +427,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 				config.Servicios[host] = target
 				saveConfig()
 				mu.Unlock()
-				logEvent(fmt.Sprintf("🌐 Puente añadido: %s -> %s", host, target))
+				logEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s", host, target))
 			}
 		} else if accion == "delete_service" {
 			host := r.FormValue("host")
@@ -435,7 +435,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 			delete(config.Servicios, host)
 			saveConfig()
 			mu.Unlock()
-			logEvent(fmt.Sprintf("🌐 Puente eliminado: %s", host))
+			logEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host))
 		} else if accion == "add_user" {
 			// Acciones de Usuarios
 			newUser := r.FormValue("new_user")
@@ -447,7 +447,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 				}
 				totp := generateTOTPSecret()
 				db.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 0, 0)", newUser, hash, totp)
-				logEvent(fmt.Sprintf("👤 Usuario creado: %s", newUser))
+				logEvent(fmt.Sprintf("⚇ Usuario creado: %s", newUser))
 			}
 		} else if accion == "delete_user" {
 			delUser := r.FormValue("del_user")
@@ -457,7 +457,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
 			if idToDelete != 1 {
 				db.Exec("DELETE FROM users WHERE username = ?", delUser)
-				logEvent(fmt.Sprintf("👤 Usuario eliminado: %s", delUser))
+				logEvent(fmt.Sprintf("⚇ Usuario eliminado: %s", delUser))
 			}
 		} else if accion == "ban_ip" {
 			targetIP := r.FormValue("target_ip")
@@ -465,14 +465,14 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				intentosDB[targetIP] = &Intento{fallos: 99, bloqueadoHasta: time.Now().Add(365 * 24 * time.Hour)} // Ban de 1 año
 				mu.Unlock()
-				logEvent(fmt.Sprintf("🛑 IP/Rango bloqueado manualmente: %s", targetIP))
+				logEvent(fmt.Sprintf("⊘ IP/Rango bloqueado manualmente: %s", targetIP))
 			}
 		} else if accion == "unban_ip" {
 			targetIP := r.FormValue("target_ip")
 			mu.Lock()
 			delete(intentosDB, targetIP)
 			mu.Unlock()
-			logEvent(fmt.Sprintf("✅ IP/Rango desbloqueado: %s", targetIP))
+			logEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP))
 		}
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -555,20 +555,20 @@ func handleProfile(w http.ResponseWriter, r *http.Request) {
 					mu.Lock()
 					userSession.Username = newUsername
 					mu.Unlock()
-					logEvent(fmt.Sprintf("👤 Nombre de usuario actualizado: %s", newUsername))
+					logEvent(fmt.Sprintf("⚇ Nombre de usuario actualizado: %s", newUsername))
 				}
 			}
 			if newPassword != "" {
 				newHash := hashPassword(newPassword)
 				db.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, u.ID)
-				logEvent(fmt.Sprintf("🔑 Contraseña actualizada por el usuario: %s", u.Username))
+				logEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s", u.Username))
 			}
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "enable_2fa" {
 			if r.FormValue("code") == getTOTPCode(u.TotpSecret) {
 				db.Exec("UPDATE users SET totp_active = 1 WHERE id = ?", u.ID)
-				logEvent(fmt.Sprintf("🔐 2FA activado por el usuario: %s", u.Username))
+				logEvent(fmt.Sprintf("⚿ 2FA activado por el usuario: %s", u.Username))
 				http.Redirect(w, r, "/profile", http.StatusSeeOther)
 				return
 			} else {
@@ -576,7 +576,7 @@ func handleProfile(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if accion == "disable_2fa" {
 			db.Exec("UPDATE users SET totp_active = 0 WHERE id = ?", u.ID)
-			logEvent(fmt.Sprintf("🔓 2FA desactivado por el usuario: %s", u.Username))
+			logEvent(fmt.Sprintf("⊘ 2FA desactivado por el usuario: %s", u.Username))
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		}
@@ -600,7 +600,7 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 			secret := generateTOTPSecret()
 			_, err := db.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, secret)
 			if err == nil {
-				logEvent("✅ Instalación completada. Administrador original creado.")
+				logEvent("✓ Instalación completada. Administrador original creado.")
 				mu.Lock()
 				needsSetup = false
 				mu.Unlock()
