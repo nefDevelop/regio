@@ -1,0 +1,16 @@
+# Binarios de Go
+bouncer
+main
+
+# Configuración sensible y local (¡NUNCA SUBIR!)
+.env
+config.json
+
+# Docker y logs
+*.log
+.docker/
+
+# Archivos de sistema y temporales
+.DS_Store
+dist/
+bin/
