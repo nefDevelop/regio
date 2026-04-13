@@ -1,17 +1,12 @@
-version: '3.8'
-
 services:
-  bouncer:
+  regio:
     build: .
-    container_name: bouncer_seguro
+    container_name: REGIO_seguro
     restart: always
     ports:
       - "9999:80"
-    environment:
-      - BOUNCER_USER=${BOUNCER_USER}
-      - BOUNCER_PASS=${BOUNCER_PASS}
-      - ADMIN_DOMAIN=${ADMIN_DOMAIN}
-      - BOUNCER_TOTP_SECRET=${BOUNCER_TOTP_SECRET}
+    env_file:
+      - .env
     volumes:
       - ./config.json:/root/config.json:rw
       - ./data:/root/data:rw
