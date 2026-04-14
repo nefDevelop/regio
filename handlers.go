@@ -28,7 +28,7 @@ var (
 	</head>
 	<body>
 		<div class="login-box">
-			<h2>❖ reGiO Login</h2>
+			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">reGiO Login</h2>
 			{{if .}} <div class="error">Usuario, contraseña o 2FA incorrectos</div> {{end}}
 			<form method="POST">
 				<input type="text" name="user" placeholder="Usuario" required autofocus>
@@ -302,7 +302,7 @@ var (
 	</head>
 	<body>
 		<div class="login-box">
-			<h2>Hola, {{.}} ✧</h2>
+			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">Hola, {{.}}</h2>
 			<p>Bienvenido. Por favor, crea tu contraseña para continuar.</p>
 			<form method="POST" action="/REGIO-login">
 				<input type="hidden" name="step" value="set_password">
@@ -656,7 +656,7 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 	</head>
 	<body>
 		<div class="box">
-			<h2>✧ Bienvenido a reGiO</h2>
+			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">Bienvenido a reGiO</h2>
 			<p>Crea tu cuenta de administrador.</p>
 			<form method="POST">
 				<input type="text" name="user" placeholder="Nombre de usuario" required autofocus>
