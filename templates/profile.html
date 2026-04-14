@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Mi Perfil - reGiO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/static/reGiO.svg" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body class="profile-view">
+    <div class="header">
+      <h2>
+        <img
+          src="/static/reGiO.svg"
+          alt="logo"
+          style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1)"
+        />Mi Perfil
+      </h2>
+      <div>
+        {{if .User.IsAdmin}}<a href="/admin" class="btn-nav" style="margin-right: 8px; background: #3b82f6">Volver al Panel</a>{{end}}
+        <a href="/logout" class="btn-nav">Cerrar Sesión</a>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>✎ Detalles de la Cuenta</h3>
+      <form method="POST">
+        <input type="hidden" name="accion" value="update_profile" />
+        <input type="text" name="new_username" value="{{.User.Username}}" required />
+        <input type="password" name="new_password" placeholder="Nueva contraseña (opcional)" />
+        <button class="btn-add" style="background: #3b82f6">Guardar Cambios</button>
+      </form>
+    </div>
+
+    <div class="section">
+      <h3>Autenticación en Dos Pasos (2FA)</h3>
+      {{if .User.TotpActive}}
+      <p style="color: #10b981; font-weight: 600; margin-bottom: 24px; font-size: 16px">✓ El 2FA está activado y protegiendo tu cuenta.</p>
+      <form method="POST">
+        <input type="hidden" name="accion" value="disable_2fa" />
+        <button class="btn-del">Desactivar 2FA</button>
+      </form>
+      {{else}}
+      <p>Aumenta la seguridad de tu cuenta activando el 2FA.</p>
+      <p style="font-size: 14px">1. Escanea este código con Google Authenticator o Authy:</p>
+      <div id="qrcode"></div>
+      <p style="font-size: 14px">O usa la clave manual: <span class="secret-text">{{.User.TotpSecret}}</span></p>
+
+      <hr style="border: 0; border-top: 1px solid #2d313a; margin: 30px 0" />
+
+      <p style="font-size: 14px">2. Introduce el código generado para confirmar:</p>
+      <form method="POST">
+        <input type="hidden" name="accion" value="enable_2fa" />
+        {{if .Error}}
+        <div class="error">Código incorrecto, inténtalo de nuevo.</div>
+        {{end}}
+        <input type="text" name="code" placeholder="Código de 6 dígitos" required inputmode="numeric" autocomplete="one-time-code" /><br />
+        <button class="btn-add">Activar 2FA</button>
+      </form>
+      <script>
+        new QRCode(document.getElementById("qrcode"), {
+          text: "{{.OtpUrl}}",
+          width: 150,
+          height: 150,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      </script>
+      {{end}}
+    </div>
+  </body>
+</html>
