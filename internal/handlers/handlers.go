@@ -39,6 +39,7 @@ func Init() {
 }
 
 func ServeStatic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	http.FileServer(http.FS(staticFiles)).ServeHTTP(w, r)
 }
 
