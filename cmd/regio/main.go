@@ -51,6 +51,8 @@ func main() {
 					delete(handlers.IntentosDB, ip)
 				}
 			}
+			// Limpieza del Rate Limiter para liberar RAM
+			handlers.LimpiarRateLimiter()
 			handlers.Mu.Unlock()
 		}
 	}()
