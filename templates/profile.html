@@ -23,7 +23,22 @@
     </div>
 
     <div class="section">
-      <h3>✎ Detalles de la Cuenta</h3>
+      <h3>
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          style="vertical-align: text-bottom; margin-right: 8px"
+        >
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle></svg
+        >Detalles de la Cuenta
+      </h3>
       <form method="POST">
         <input type="hidden" name="accion" value="update_profile" />
         <input type="text" name="new_username" value="{{.User.Username}}" required />
@@ -33,7 +48,22 @@
     </div>
 
     <div class="section">
-      <h3>Autenticación en Dos Pasos (2FA)</h3>
+      <h3>
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          style="vertical-align: text-bottom; margin-right: 8px"
+        >
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg
+        >Autenticación en Dos Pasos (2FA)
+      </h3>
       {{if .User.TotpActive}}
       <p style="color: #10b981; font-weight: 600; margin-bottom: 24px; font-size: 16px">✓ El 2FA está activado y protegiendo tu cuenta.</p>
       <form method="POST">

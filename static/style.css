@@ -256,6 +256,8 @@ table {
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 10px;
+  border: 1px solid #2d313a;
+  border-radius: 12px;
 }
 th,
 td {
@@ -263,6 +265,9 @@ td {
   border-bottom: 1px solid #2d313a;
   text-align: left;
   font-size: 15px;
+}
+tr:last-child td {
+  border-bottom: none;
 }
 th {
   background: #1f2228;
