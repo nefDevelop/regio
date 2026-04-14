@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
   <head>
     <title>Mi Perfil - reGiO</title>
@@ -6,80 +6,148 @@
     <link rel="icon" type="image/svg+xml" href="/static/reGiO.svg" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .token-alert {
+        background: rgba(99, 102, 241, 0.1);
+        border: 2px solid var(--primary);
+        padding: 24px;
+        border-radius: 20px;
+        margin-bottom: 32px;
+        animation: fadeIn 0.5s ease;
+        backdrop-filter: blur(10px);
+      }
+      .token-value {
+        font-family: ui-monospace, monospace;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 16px;
+        display: block;
+        margin: 16px 0;
+        word-break: break-all;
+        color: #818cf8;
+        font-size: 1.1em;
+        border-radius: 12px;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        text-align: center;
+      }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
   </head>
   <body class="profile-view">
     <div class="header">
-      <h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; margin-right: 10px; filter: invert(1)" />Mi Perfil</h2>
+      <h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; margin-right: 12px; filter: invert(1)" />Mi Perfil</h2>
       <div>
         {{if .User.IsAdmin}}<a href="/admin" class="btn-nav btn-primary" style="margin-right: 8px; border: none">Volver al Panel</a>{{end}}
         <a href="/logout" class="btn-nav">Cerrar Sesión</a>
       </div>
     </div>
 
+    {{if .NewToken}}
+    <div class="token-alert">
+        <h4 style="margin-top:0; color: #818cf8; display: flex; align-items: center; justify-content: center; gap: 8px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3m-3-3l-2.25-2.25"/></svg>
+          Nuevo App Token Generado
+        </h4>
+        <p style="font-size: 14px; color: var(--text-muted); text-align: center">Copia este token ahora. <strong>No se volverá a mostrar.</strong></p>
+        <span class="token-value">{{.NewToken}}</span>
+        <p style="font-size: 12px; color: var(--text-dim); text-align: center">Úsalo en tus aplicaciones o como <code>?api_key=</code> en la URL.</p>
+    </div>
+    {{end}}
+
     <div class="section">
       <h3>
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          style="margin-right: 8px"
-        >
-          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle></svg
-        >Detalles de la Cuenta
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        Detalles de la Cuenta
       </h3>
       <form method="POST">
         <input type="hidden" name="accion" value="update_profile" />
-        <input type="text" name="new_username" value="{{.User.Username}}" required />
-        <input type="password" name="new_password" placeholder="Nueva contraseña (opcional)" />
-        <button class="btn-add">Guardar Cambios</button>
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <div style="margin-bottom: 20px">
+          <input type="text" name="new_username" value="{{.User.Username}}" required style="width: 100%; max-width: 400px" />
+        </div>
+        <div style="margin-bottom: 20px">
+          <input type="password" name="new_password" placeholder="Nueva contraseña (opcional)" style="width: 100%; max-width: 400px" />
+        </div>
+        <button class="btn-add" style="width: 100%; max-width: 400px">Guardar Cambios</button>
       </form>
     </div>
 
     <div class="section">
       <h3>
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          style="margin-right: 8px"
-        >
-          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg
-        >Autenticación en Dos Pasos (2FA)
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px"><rect width="20" height="12" x="2" y="9" rx="2" ry="2"></rect><path d="M7 9V5a5 5 0 0 1 10 0v4"></path></svg>
+        App Tokens / API Keys
+      </h3>
+      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 32px">Usa estos tokens para conectar aplicaciones externas de forma segura.</p>
+      
+      <form method="POST" style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap; justify-content: center">
+        <input type="hidden" name="accion" value="create_token" />
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <input type="text" name="token_name" placeholder="Nombre (ej: Móvil)" required style="flex-grow: 1; max-width: 300px; margin: 0" />
+        <button class="btn-add" style="margin: 0; width: auto; padding: 0 24px">Generar</button>
+      </form>
+
+      {{if .Tokens}}
+      <table>
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Último Uso</th>
+                <th>Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Tokens}}
+            <tr>
+                <td style="font-weight: 600; color: #818cf8">{{.Name}}</td>
+                <td style="font-size: 0.9em; color: var(--text-muted)">
+                    {{if .LastUsed.Valid}}{{.LastUsed.Time.Format "02/01/2006 15:04"}}{{else}}Nunca{{end}}
+                </td>
+                <td style="text-align: right">
+                    <form method="POST" style="display: inline; margin: 0">
+                        <input type="hidden" name="accion" value="revoke_token" />
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                        <input type="hidden" name="token_id" value="{{.ID}}" />
+                        <button class="btn-del" style="padding: 6px 14px; font-size: 12px; width: auto; margin: 0">Revocar</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p style="text-align: center; color: var(--text-dim); font-size: 14px; padding: 32px; background: rgba(0,0,0,0.1); border-radius: 16px">No tienes tokens activos.</p>
+      {{end}}
+    </div>
+
+    <div class="section">
+      <h3>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        Segunda Autenticación (2FA)
       </h3>
       {{if .User.TotpActive}}
-      <p style="color: #10b981; font-weight: 600; margin-bottom: 24px; font-size: 16px">✓ El 2FA está activado y protegiendo tu cuenta.</p>
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 24px; border-radius: 16px; margin-bottom: 32px">
+        <p style="color: #34d399; font-weight: 600; margin: 0; font-size: 16px">✓ El 2FA está activado y protegiendo tu cuenta.</p>
+      </div>
       <form method="POST">
         <input type="hidden" name="accion" value="disable_2fa" />
-        <button class="btn-del">Desactivar 2FA</button>
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+        <button class="btn-del" style="width: 100%; max-width: 320px">Desactivar 2FA</button>
       </form>
       {{else}}
-      <p>Aumenta la seguridad de tu cuenta activando el 2FA.</p>
-      <p style="font-size: 14px">1. Escanea este código con Google Authenticator o Authy:</p>
+      <p style="margin-bottom: 24px">Aumenta la seguridad de tu cuenta activando el 2FA.</p>
       <div id="qrcode"></div>
-      <p style="font-size: 14px">O usa la clave manual: <span class="secret-text">{{.User.TotpSecret}}</span></p>
+      <p style="font-size: 13px; color: var(--text-dim); margin: 24px 0">O usa la clave manual: <span class="secret-text" style="padding: 4px 8px; background: rgba(0,0,0,0.4); border-radius: 6px; color: var(--text)">{{.User.TotpSecret}}</span></p>
 
-      <hr style="border: 0; border-top: 1px solid #2d313a; margin: 30px 0" />
+      <div style="margin: 32px 0; border-top: 1px solid var(--surface-border)"></div>
 
-      <p style="font-size: 14px">2. Introduce el código generado para confirmar:</p>
+      <p style="font-size: 14px; margin-bottom: 20px">Introduce el código de 6 dígitos para confirmar:</p>
       <form method="POST">
         <input type="hidden" name="accion" value="enable_2fa" />
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
         {{if .Error}}
         <div class="error">Código incorrecto, inténtalo de nuevo.</div>
         {{end}}
-        <input type="text" name="code" placeholder="Código de 6 dígitos" required inputmode="numeric" autocomplete="one-time-code" /><br />
-        <button class="btn-add">Activar 2FA</button>
+        <input type="text" name="code" placeholder="000000" required inputmode="numeric" autocomplete="one-time-code" style="font-size: 24px; letter-spacing: 8px; width: 100%; max-width: 240px; margin-bottom: 24px" /><br />
+        <button class="btn-add" style="width: 100%; max-width: 320px">Activar 2FA</button>
       </form>
       <script>
         new QRCode(document.getElementById("qrcode"), {

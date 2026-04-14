@@ -2,9 +2,9 @@
 FROM golang:alpine AS builder
 WORKDIR /app
 COPY . .
-# Inicializar módulo y descargar dependencias
+# Descargar dependencias y compilar desde la nueva estructura
 RUN go mod download && \
-    CGO_ENABLED=0 GOOS=linux go build -a -o REGIO .
+    CGO_ENABLED=0 GOOS=linux go build -a -o REGIO ./cmd/regio
 
 # Etapa 2: Imagen final minimalista
 FROM alpine:latest

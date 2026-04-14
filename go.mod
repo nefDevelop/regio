@@ -1,4 +1,4 @@
-module REGIO
+module regio
 
 go 1.25.0
 
