@@ -196,7 +196,11 @@ button,
 .btn-nav,
 .btn-logout,
 .btn-add,
-.btn-del {
+.btn-del,
+.btn-primary,
+.btn-success,
+.btn-danger,
+.btn-edit {
   border: none;
   cursor: pointer;
   font-weight: 600;
@@ -206,6 +210,9 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
 }
 
 /* Base button styles */
@@ -256,8 +263,7 @@ button,
   font-size: 16px;
   margin-top: 12px;
 }
-.admin-view .btn-add,
-.profile-view .btn-add {
+.btn-add {
   padding: 14px 28px;
   border-radius: 14px;
   font-size: 14px;
@@ -265,8 +271,7 @@ button,
   color: white;
 }
 
-.admin-view .btn-del,
-.profile-view .btn-del {
+.btn-del {
   padding: 10px 18px;
   border-radius: 10px;
   font-size: 13px;
@@ -274,8 +279,7 @@ button,
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
-.admin-view .btn-del:hover,
-.profile-view .btn-del:hover {
+.btn-del:hover {
   background: var(--danger);
   color: white;
   transform: translateY(-1px);
