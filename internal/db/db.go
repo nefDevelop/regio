@@ -35,7 +35,34 @@ func InitDB() {
 
 	DB.Exec("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;")
 	DB.Exec("ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;")
-	DB.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT);")
+	DB.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT, performer TEXT);")
+	DB.Exec("ALTER TABLE events ADD COLUMN performer TEXT;") // Por si la tabla ya existía
+
+	createBannedTable := `
+	CREATE TABLE IF NOT EXISTS banned_ips (
+		ip TEXT PRIMARY KEY,
+		hasta DATETIME,
+		razon TEXT
+	);`
+	_, err = DB.Exec(createBannedTable)
+	if err != nil {
+		log.Fatal("Error creando tabla banned_ips:", err)
+	}
+
+	createSessionsTable := `
+	CREATE TABLE IF NOT EXISTS sessions (
+		token TEXT PRIMARY KEY,
+		user_id INTEGER,
+		ip TEXT,
+		user_agent TEXT,
+		last_active DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id)
+	);`
+	_, err = DB.Exec(createSessionsTable)
+	if err != nil {
+		log.Fatal("Error creando tabla sessions:", err)
+	}
 
 	createTokensTable := `
 	CREATE TABLE IF NOT EXISTS app_tokens (
@@ -65,11 +92,11 @@ func SaveConfig(config models.Config) error {
 	return os.WriteFile("./data/config.json", data, 0644)
 }
 
-func LogEvent(message string) {
+func LogEvent(message string, performer string) {
 	if DB != nil {
-		DB.Exec("INSERT INTO events (message) VALUES (?)", message)
+		DB.Exec("INSERT INTO events (message, performer) VALUES (?, ?)", message, performer)
 	}
-	log.Println(message)
+	log.Printf("[%s] %s", performer, message)
 }
 
 func ClearEvents() error {

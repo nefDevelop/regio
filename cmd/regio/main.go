@@ -62,6 +62,7 @@ func main() {
 					delete(handlers.IntentosDB, ip)
 				}
 			}
+                        handlers.CleanupSessions()
 			handlers.LimpiarRateLimiter()
 			handlers.Mu.Unlock()
 		}
@@ -179,6 +180,7 @@ func main() {
 			log.Printf("👤 Sesión válida vía Token para: %s (Token: %s)", user.Username, tokenUsed)
 		} else {
 			log.Printf("👤 Sesión válida vía Cookie para: %s", user.Username)
+                        handlers.UpdateSessionActivity(cookie.Value)
 		}
 
 		// Ruta de Logout

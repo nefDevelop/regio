@@ -46,15 +46,27 @@ p small {
 }
 
 .admin-view {
-  max-width: 1000px;
-  margin: 40px auto;
   padding: 20px;
 }
 
 .profile-view {
-  max-width: 680px;
-  margin: 40px auto;
   padding: 20px;
+}
+
+.admin-view .header,
+.admin-view .section,
+.profile-view .header,
+.profile-view .section,
+.profile-view .token-alert {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.profile-view .header,
+.profile-view .section,
+.profile-view .token-alert {
+  max-width: 680px;
 }
 
 /* CONTAINERS (Islands) */
@@ -200,9 +212,11 @@ input:focus {
   width: auto;
 }
 
-.profile-view input {
+.profile-view input,
+.profile-view button.btn-add,
+.profile-view button.btn-del:not(.compact) {
   width: 100%;
-  max-width: 320px;
+  max-width: 400px;
   padding: 14px 16px;
   margin-bottom: 16px;
   font-size: 16px;

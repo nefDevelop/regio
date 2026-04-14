@@ -14,6 +14,26 @@ var (
 	ventanaTiempo = 1 * time.Minute
 )
 
+func InitSecurity() {
+	Mu.Lock()
+	defer Mu.Unlock()
+	rows, err := db.DB.Query("SELECT ip, hasta, razon FROM banned_ips WHERE hasta > ?", time.Now())
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ip, razon string
+		var hasta time.Time
+		rows.Scan(&ip, &hasta, &razon)
+		IntentosDB[ip] = &models.Intento{
+			Fallos:         99, // Forzar bloqueo
+			BloqueadoHasta: hasta,
+		}
+	}
+}
+
 func CheckRateLimit(ip string) bool {
 	Mu.Lock()
 	defer Mu.Unlock()
@@ -66,13 +86,17 @@ func RegistrarFallo(ip string) {
 	Mu.Lock()
 	defer Mu.Unlock()
 
+	ahora := time.Now()
+
 	if _, ok := IntentosDB[ip]; !ok {
 		IntentosDB[ip] = &models.Intento{Fallos: 1}
 	} else {
 		IntentosDB[ip].Fallos++
 		if IntentosDB[ip].Fallos >= 5 {
-			IntentosDB[ip].BloqueadoHasta = time.Now().Add(15 * time.Minute)
-			db.LogEvent(fmt.Sprintf("⊘ IP BLOQUEADA (Fuerza bruta): %s", ip))
+			hasta := ahora.Add(15 * time.Minute)
+			IntentosDB[ip].BloqueadoHasta = hasta
+			db.DB.Exec("INSERT OR REPLACE INTO banned_ips (ip, hasta, razon) VALUES (?, ?, ?)", ip, hasta, "Fuerza bruta individual")
+			db.LogEvent(fmt.Sprintf("⊘ IP BLOQUEADA (Fuerza bruta): %s", ip), "Sistema")
 		}
 	}
 
@@ -83,11 +107,20 @@ func RegistrarFallo(ip string) {
 		} else {
 			IntentosDB[subnet].Fallos++
 			if IntentosDB[subnet].Fallos >= 15 {
-				IntentosDB[subnet].BloqueadoHasta = time.Now().Add(1 * time.Hour)
-				db.LogEvent(fmt.Sprintf("⊘ RANGO BLOQUEADO (Ataque múltiple): %s", subnet))
+				hasta := ahora.Add(1 * time.Hour)
+				IntentosDB[subnet].BloqueadoHasta = hasta
+				db.DB.Exec("INSERT OR REPLACE INTO banned_ips (ip, hasta, razon) VALUES (?, ?, ?)", subnet, hasta, "Ataque múltiple desde rango")
+				db.LogEvent(fmt.Sprintf("⊘ RANGO BLOQUEADO (Ataque múltiple): %s", subnet), "Sistema")
 			}
 		}
 	}
+}
+
+func UnbanIP(target string) {
+	Mu.Lock()
+	defer Mu.Unlock()
+	delete(IntentosDB, target)
+	db.DB.Exec("DELETE FROM banned_ips WHERE ip = ?", target)
 }
 
 func IsIPBlocked(ip string) (bool, string) {

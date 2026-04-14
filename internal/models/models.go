@@ -41,4 +41,5 @@ type BannedIP struct {
 type Event struct {
 	Timestamp string
 	Message   string
+	Performer string
 }

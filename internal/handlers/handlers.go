@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -36,10 +38,42 @@ var (
 
 func Init() {
 	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
+	InitSecurity()
+	LoadSessions()
+}
+
+func LoadSessions() {
+	Mu.Lock()
+	defer Mu.Unlock()
+	rows, err := db.DB.Query("SELECT s.token, s.user_id, u.username, u.is_admin, u.totp_active, s.ip, s.last_active FROM sessions s JOIN users u ON s.user_id = u.id")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var token, username, ip string
+		var userID int
+		var isAdmin, totpActive bool
+		var lastActive time.Time
+		rows.Scan(&token, &userID, &username, &isAdmin, &totpActive, &ip, &lastActive)
+		ActiveSessions[token] = &models.User{
+			ID:         userID,
+			Username:   username,
+			IsAdmin:    isAdmin,
+			TotpActive: totpActive,
+			CSRFToken:  auth.GenerateSessionToken(), // Nuevo CSRF por reinicio para seguridad
+			LastActive: lastActive,
+			RemoteIP:   ip,
+		}
+	}
 }
 
 func ServeStatic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	if strings.HasSuffix(r.URL.Path, ".css") {
+		w.Header().Set("Content-Type", "text/css")
+	}
 	http.FileServer(http.FS(staticFiles)).ServeHTTP(w, r)
 }
 
@@ -77,7 +111,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					delete(IntentosDB, ip)
 					Mu.Unlock()
 
-					db.LogEvent(fmt.Sprintf("⚿ Contraseña inicial creada y sesión iniciada: %s", inputUser))
+					db.DB.Exec("INSERT INTO sessions (token, user_id, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?)", token, id, ip, r.UserAgent(), time.Now())
+					db.LogEvent(fmt.Sprintf("⚿ Contraseña inicial creada y sesión iniciada: %s", inputUser), inputUser)
 					http.Redirect(w, r, "/", http.StatusSeeOther)
 					return
 				}
@@ -116,7 +151,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			delete(IntentosDB, ip)
 			Mu.Unlock()
 
-			db.LogEvent(fmt.Sprintf("✓ Inicio de sesión exitoso: %s (%s)", inputUser, ip))
+			db.DB.Exec("INSERT INTO sessions (token, user_id, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?)", token, id, ip, r.UserAgent(), time.Now())
+			db.LogEvent(fmt.Sprintf("✓ Inicio de sesión exitoso: %s (%s)", inputUser, ip), inputUser)
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -148,23 +184,33 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			host := r.FormValue("host")
 			target := r.FormValue("target")
 			if host != "" && target != "" {
+				if err := isValidTarget(target); err != nil {
+					db.LogEvent(fmt.Sprintf("⚠ Intento de añadir target inválido/SSRF: %s -> %s (%v)", host, target, err), user.Username)
+					http.Error(w, "Target inválido: "+err.Error(), http.StatusBadRequest)
+					return
+				}
 				Mu.Lock()
 				Config.Servicios[host] = target
 				db.SaveConfig(Config)
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s", host, target))
+				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s", host, target), user.Username)
 			}
 		} else if accion == "update_service" {
 			host := r.FormValue("old_host")
 			newHost := r.FormValue("host")
 			target := r.FormValue("target")
 			if host != "" && newHost != "" && target != "" {
+				if err := isValidTarget(target); err != nil {
+					db.LogEvent(fmt.Sprintf("⚠ Intento de actualizar target inválido/SSRF: %s -> %s (%v)", newHost, target, err), user.Username)
+					http.Error(w, "Target inválido: "+err.Error(), http.StatusBadRequest)
+					return
+				}
 				Mu.Lock()
 				delete(Config.Servicios, host)
 				Config.Servicios[newHost] = target
 				db.SaveConfig(Config)
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target))
+				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target), user.Username)
 			}
 		} else if accion == "delete_service" {
 			host := r.FormValue("host")
@@ -172,13 +218,13 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			delete(Config.Servicios, host)
 			db.SaveConfig(Config)
 			Mu.Unlock()
-			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host))
+			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
 		} else if accion == "add_user" {
 			newUser := r.FormValue("new_user")
 			if newUser != "" {
 				totp := auth.GenerateTOTPSecret()
 				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, '', ?, 0, 0)", newUser, totp)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario creado (Pendiente contraseña): %s", newUser))
+				db.LogEvent(fmt.Sprintf("⚇ Usuario creado (Pendiente contraseña): %s", newUser), user.Username)
 			}
 		} else if accion == "delete_user" {
 			delUser := r.FormValue("del_user")
@@ -186,25 +232,32 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.DB.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
 			if idToDelete != 1 {
 				db.DB.Exec("DELETE FROM users WHERE username = ?", delUser)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario eliminado: %s", delUser))
+				db.LogEvent(fmt.Sprintf("⚇ Usuario eliminado: %s", delUser), user.Username)
 			}
 		} else if accion == "ban_ip" {
 			targetIP := r.FormValue("target_ip")
 			if targetIP != "" {
+				hasta := time.Now().Add(365 * 24 * time.Hour)
 				Mu.Lock()
-				IntentosDB[targetIP] = &models.Intento{Fallos: 99, BloqueadoHasta: time.Now().Add(365 * 24 * time.Hour)}
+				IntentosDB[targetIP] = &models.Intento{Fallos: 99, BloqueadoHasta: hasta}
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⊘ IP/Rango bloqueado manualmente: %s", targetIP))
+				db.DB.Exec("INSERT OR REPLACE INTO banned_ips (ip, hasta, razon) VALUES (?, ?, ?)", targetIP, hasta, "Bloqueo manual del administrador")
+				db.LogEvent(fmt.Sprintf("⊘ IP/Rango bloqueado manualmente: %s", targetIP), user.Username)
 			}
 		} else if accion == "unban_ip" {
 			targetIP := r.FormValue("target_ip")
-			Mu.Lock()
-			delete(IntentosDB, targetIP)
-			Mu.Unlock()
-			db.LogEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP))
+			UnbanIP(targetIP)
+			db.LogEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP), user.Username)
 		} else if accion == "clear_events" {
 			db.ClearEvents()
-			db.LogEvent(fmt.Sprintf("⚠ Registro de eventos vaciado por: %s", user.Username))
+			db.LogEvent(fmt.Sprintf("⚠ Registro de eventos vaciado por: %s", user.Username), user.Username)
+		} else if accion == "revoke_session" {
+			tokenToRevoke := r.FormValue("token")
+			Mu.Lock()
+			delete(ActiveSessions, tokenToRevoke)
+			Mu.Unlock()
+			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
+			db.LogEvent(fmt.Sprintf("⊘ Sesión revocada por el administrador: %s", user.Username), user.Username)
 		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
@@ -229,11 +282,11 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	Mu.Unlock()
 
 	var events []models.Event
-	rowsEvents, _ := db.DB.Query("SELECT datetime(timestamp, 'localtime'), message FROM events ORDER BY id DESC LIMIT 50")
+	rowsEvents, _ := db.DB.Query("SELECT datetime(timestamp, 'localtime'), message, performer FROM events ORDER BY id DESC LIMIT 50")
 	defer rowsEvents.Close()
 	for rowsEvents.Next() {
 		var e models.Event
-		rowsEvents.Scan(&e.Timestamp, &e.Message)
+		rowsEvents.Scan(&e.Timestamp, &e.Message, &e.Performer)
 		events = append(events, e)
 	}
 
@@ -309,6 +362,27 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		return healthResults[i].Host < healthResults[j].Host
 	})
 
+	// 7. Sesiones Globales
+	type GlobalSessionDisplay struct {
+		Token      string
+		Username   string
+		IP         string
+		LastActive string
+		IsCurrent  bool
+	}
+	var allSessions []GlobalSessionDisplay
+	Mu.Lock()
+	for token, sUser := range ActiveSessions {
+		allSessions = append(allSessions, GlobalSessionDisplay{
+			Token:      token,
+			Username:   sUser.Username,
+			IP:         sUser.RemoteIP,
+			LastActive: RelTime(sUser.LastActive),
+			IsCurrent:  token == cookie.Value,
+		})
+	}
+	Mu.Unlock()
+
 	data := struct {
 		Config            models.Config
 		Users             []models.User
@@ -318,6 +392,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		HostSuggestions   []string
 		TargetSuggestions []string
 		HealthResults     []ServiceStatus
+		AllSessions       []GlobalSessionDisplay
 	}{
 		Config:            Config,
 		Users:             users,
@@ -327,6 +402,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		HostSuggestions:   hosts,
 		TargetSuggestions: targets,
 		HealthResults:     healthResults,
+		AllSessions:       allSessions,
 	}
 	Tmpls.ExecuteTemplate(w, "admin.html", data)
 }
@@ -368,20 +444,20 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 					Mu.Lock()
 					userSession.Username = newUsername
 					Mu.Unlock()
-					db.LogEvent(fmt.Sprintf("⚇ Nombre de usuario actualizado: %s", newUsername))
+					db.LogEvent(fmt.Sprintf("⚇ Nombre de usuario actualizado: %s", newUsername), u.Username)
 				}
 			}
 			if newPassword != "" {
 				newHash := auth.HashPassword(newPassword)
 				db.DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, u.ID)
-				db.LogEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s", u.Username))
+				db.LogEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s", u.Username), u.Username)
 			}
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "enable_2fa" {
 			if r.FormValue("code") == auth.GetTOTPCode(u.TotpSecret) {
 				db.DB.Exec("UPDATE users SET totp_active = 1 WHERE id = ?", u.ID)
-				db.LogEvent(fmt.Sprintf("⚿ 2FA activado por el usuario: %s", u.Username))
+				db.LogEvent(fmt.Sprintf("⚿ 2FA activado por el usuario: %s", u.Username), u.Username)
 				http.Redirect(w, r, "/profile", http.StatusSeeOther)
 				return
 			} else {
@@ -389,7 +465,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if accion == "disable_2fa" {
 			db.DB.Exec("UPDATE users SET totp_active = 0 WHERE id = ?", u.ID)
-			db.LogEvent(fmt.Sprintf("⊘ 2FA desactivado por el usuario: %s", u.Username))
+			db.LogEvent(fmt.Sprintf("⊘ 2FA desactivado por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "create_token" {
@@ -401,13 +477,13 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				_, err := db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", u.ID, tokenName, tokenHash)
 				if err == nil {
 					newToken = rawToken
-					db.LogEvent(fmt.Sprintf("⚿ App Token creado: %s para el usuario: %s", tokenName, u.Username))
+					db.LogEvent(fmt.Sprintf("⚿ App Token creado: %s para el usuario: %s", tokenName, u.Username), u.Username)
 				}
 			}
 		} else if accion == "revoke_token" {
 			tokenID := r.FormValue("token_id")
 			db.DB.Exec("DELETE FROM app_tokens WHERE id = ? AND user_id = ?", tokenID, u.ID)
-			db.LogEvent(fmt.Sprintf("⊘ App Token revocado por el usuario: %s", u.Username))
+			db.LogEvent(fmt.Sprintf("⊘ App Token revocado por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "revoke_session" {
@@ -415,7 +491,8 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			Mu.Lock()
 			delete(ActiveSessions, tokenToRevoke)
 			Mu.Unlock()
-			db.LogEvent(fmt.Sprintf("⊘ Sesión de navegador revocada por el usuario: %s", u.Username))
+			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
+			db.LogEvent(fmt.Sprintf("⊘ Sesión de navegador revocada por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		}
@@ -484,7 +561,7 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 			secret := auth.GenerateTOTPSecret()
 			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, secret)
 			if err == nil {
-				db.LogEvent("✓ Instalación completada. Administrador original creado.")
+				db.LogEvent("✓ Instalación completada. Administrador original creado.", "Sistema")
 				Mu.Lock()
 				NeedsSetup = false
 				Mu.Unlock()
@@ -524,4 +601,62 @@ func RelTime(t time.Time) string {
 		return fmt.Sprintf("hace %d horas", int(diff.Hours()))
 	}
 	return t.Format("02/01/2006")
+}
+
+func isValidTarget(target string) error {
+	u, err := url.Parse(target)
+	if err != nil {
+		return fmt.Errorf("URL inválida")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("solo se permite http o https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("host no especificado")
+	}
+
+	host, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		host = u.Host
+	}
+
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return fmt.Errorf("no se permite apuntar a la interfaz de loopback")
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("IP privada o restringida")
+		}
+	}
+
+	return nil
+}
+
+func UpdateSessionActivity(token string) {
+	Mu.Lock()
+	user, ok := ActiveSessions[token]
+	if ok {
+		user.LastActive = time.Now()
+	}
+	Mu.Unlock()
+
+	if ok {
+		db.DB.Exec("UPDATE sessions SET last_active = ? WHERE token = ?", time.Now(), token)
+	}
+}
+
+func CleanupSessions() {
+	Mu.Lock()
+	defer Mu.Unlock()
+	ahora := time.Now()
+	limite := ahora.Add(-7 * 24 * time.Hour)
+
+	for token, user := range ActiveSessions {
+		if user.LastActive.Before(limite) {
+			delete(ActiveSessions, token)
+		}
+	}
+	db.DB.Exec("DELETE FROM sessions WHERE last_active < ?", limite)
 }
