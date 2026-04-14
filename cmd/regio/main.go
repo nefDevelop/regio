@@ -105,22 +105,26 @@ func main() {
 		handlers.Mu.Unlock()
 
 		if blocked {
+			log.Printf("🚫 IP Bloqueada: %s", ip)
 			http.Error(w, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
 			return
 		}
 
 		// 2. Modo Instalación (Setup)
 		if isSetup {
+			log.Println("🛠 Modo Setup activo")
 			if r.URL.Path == "/setup" {
 				handlers.HandleSetup(w, r)
 				return
 			}
+			log.Println("↪️ Redirigiendo a /setup")
 			http.Redirect(w, r, "/setup", http.StatusTemporaryRedirect)
 			return
 		}
 
 		// 3. Ruta de Login
 		if r.URL.Path == "/REGIO-login" {
+			log.Println("🔑 Accediendo a HandleLogin")
 			handlers.HandleLogin(w, r, ip)
 			return
 		}
@@ -155,17 +159,22 @@ func main() {
 			}
 
 			if !validSession {
+				_ = tokenUsed
 				// Si no es un navegador, pedimos Basic Auth (con App Token)
 				if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+					log.Println("🛑 No autorizado (API/Basic)")
 					w.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
 					http.Error(w, "No autorizado", http.StatusUnauthorized)
 					return
 				}
 				// Si es un navegador, enviamos a login
+				log.Println("↪️ Redirigiendo a /REGIO-login (Sesión no válida)")
 				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
 				return
 			}
-			_ = tokenUsed
+			log.Printf("👤 Sesión válida vía Token para: %s (Token: %s)", user.Username, tokenUsed)
+		} else {
+			log.Printf("👤 Sesión válida vía Cookie para: %s", user.Username)
 		}
 
 		// Ruta de Logout
