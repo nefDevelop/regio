@@ -22,6 +22,8 @@ type User struct {
 	IsAdmin      bool
 	CSRFToken    string
 	TotpActive   bool
+	LastActive   time.Time
+	RemoteIP     string
 }
 
 type AppToken struct {

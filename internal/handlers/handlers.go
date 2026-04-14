@@ -55,7 +55,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			step := r.FormValue("step")
 			if step == "set_password" {
 				newPass := r.FormValue("new_pass")
-				if newPass != "" {
+				confirmPass := r.FormValue("confirm_pass")
+				if newPass != "" && newPass == confirmPass {
 					newHash := auth.HashPassword(newPass)
 					db.DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, id)
 
@@ -63,7 +64,15 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					http.SetCookie(w, &http.Cookie{Name: SessionKey, Value: token, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 3600 * 24})
 
 					Mu.Lock()
-					ActiveSessions[token] = &models.User{ID: id, Username: inputUser, IsAdmin: isAdmin, TotpActive: totpActive, CSRFToken: auth.GenerateSessionToken()}
+					ActiveSessions[token] = &models.User{
+						ID:         id,
+						Username:   inputUser,
+						IsAdmin:    isAdmin,
+						TotpActive: totpActive,
+						CSRFToken:  auth.GenerateSessionToken(),
+						LastActive: time.Now(),
+						RemoteIP:   ip,
+					}
 					delete(IntentosDB, ip)
 					Mu.Unlock()
 
@@ -71,8 +80,11 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					http.Redirect(w, r, "/", http.StatusSeeOther)
 					return
 				}
+				// Redirigir de nuevo a setpassword con error si no coinciden
+				Tmpls.ExecuteTemplate(w, "setpassword.html", map[string]interface{}{"User": inputUser, "Error": "Las contraseñas no coinciden"})
+				return
 			}
-			Tmpls.ExecuteTemplate(w, "setpassword.html", inputUser)
+			Tmpls.ExecuteTemplate(w, "setpassword.html", map[string]interface{}{"User": inputUser})
 			return
 		}
 
@@ -91,7 +103,15 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			http.SetCookie(w, &http.Cookie{Name: SessionKey, Value: token, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 3600 * 24})
 
 			Mu.Lock()
-			ActiveSessions[token] = &models.User{ID: id, Username: inputUser, IsAdmin: isAdmin, TotpActive: totpActive, CSRFToken: auth.GenerateSessionToken()}
+			ActiveSessions[token] = &models.User{
+				ID:         id,
+				Username:   inputUser,
+				IsAdmin:    isAdmin,
+				TotpActive: totpActive,
+				CSRFToken:  auth.GenerateSessionToken(),
+				LastActive: time.Now(),
+				RemoteIP:   ip,
+			}
 			delete(IntentosDB, ip)
 			Mu.Unlock()
 
@@ -133,6 +153,18 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s", host, target))
 			}
+		} else if accion == "update_service" {
+			host := r.FormValue("old_host")
+			newHost := r.FormValue("host")
+			target := r.FormValue("target")
+			if host != "" && newHost != "" && target != "" {
+				Mu.Lock()
+				delete(Config.Servicios, host)
+				Config.Servicios[newHost] = target
+				db.SaveConfig(Config)
+				Mu.Unlock()
+				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target))
+			}
 		} else if accion == "delete_service" {
 			host := r.FormValue("host")
 			Mu.Lock()
@@ -142,15 +174,10 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host))
 		} else if accion == "add_user" {
 			newUser := r.FormValue("new_user")
-			newPass := r.FormValue("new_pass")
 			if newUser != "" {
-				hash := ""
-				if newPass != "" {
-					hash = auth.HashPassword(newPass)
-				}
 				totp := auth.GenerateTOTPSecret()
-				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 0, 0)", newUser, hash, totp)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario creado: %s", newUser))
+				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, '', ?, 0, 0)", newUser, totp)
+				db.LogEvent(fmt.Sprintf("⚇ Usuario creado (Pendiente contraseña): %s", newUser))
 			}
 		} else if accion == "delete_user" {
 			delUser := r.FormValue("del_user")
@@ -174,6 +201,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			delete(IntentosDB, targetIP)
 			Mu.Unlock()
 			db.LogEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP))
+		} else if accion == "clear_events" {
+			db.ClearEvents()
+			db.LogEvent(fmt.Sprintf("⚠ Registro de eventos vaciado por: %s", user.Username))
 		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
@@ -249,6 +279,35 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(targets)
 
+	// 6. Health Check concurrente
+	type ServiceStatus struct {
+		Host   string
+		Target string
+		Alive  bool
+	}
+	var healthResults []ServiceStatus
+	var wg sync.WaitGroup
+	var healthMu sync.Mutex
+
+	Mu.Lock()
+	for host, target := range Config.Servicios {
+		wg.Add(1)
+		go func(h, t string) {
+			defer wg.Done()
+			alive := checkServiceHealth(t)
+			healthMu.Lock()
+			healthResults = append(healthResults, ServiceStatus{Host: h, Target: t, Alive: alive})
+			healthMu.Unlock()
+		}(host, target)
+	}
+	Mu.Unlock()
+	wg.Wait()
+
+	// Ordenar resultados para que la tabla sea estable
+	sort.Slice(healthResults, func(i, j int) bool {
+		return healthResults[i].Host < healthResults[j].Host
+	})
+
 	data := struct {
 		Config            models.Config
 		Users             []models.User
@@ -257,6 +316,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		Events            []models.Event
 		HostSuggestions   []string
 		TargetSuggestions []string
+		HealthResults     []ServiceStatus
 	}{
 		Config:            Config,
 		Users:             users,
@@ -265,6 +325,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		Events:            events,
 		HostSuggestions:   hosts,
 		TargetSuggestions: targets,
+		HealthResults:     healthResults,
 	}
 	Tmpls.ExecuteTemplate(w, "admin.html", data)
 }
@@ -348,27 +409,69 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			db.LogEvent(fmt.Sprintf("⊘ App Token revocado por el usuario: %s", u.Username))
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
+		} else if accion == "revoke_session" {
+			tokenToRevoke := r.FormValue("token")
+			Mu.Lock()
+			delete(ActiveSessions, tokenToRevoke)
+			Mu.Unlock()
+			db.LogEvent(fmt.Sprintf("⊘ Sesión de navegador revocada por el usuario: %s", u.Username))
+			http.Redirect(w, r, "/profile", http.StatusSeeOther)
+			return
 		}
 	}
 
-	var tokens []models.AppToken
+	var rawTokens []models.AppToken
 	rows, _ := db.DB.Query("SELECT id, name, last_used, datetime(created_at, 'localtime') FROM app_tokens WHERE user_id = ?", u.ID)
 	defer rows.Close()
 	for rows.Next() {
 		var t models.AppToken
 		rows.Scan(&t.ID, &t.Name, &t.LastUsed, &t.CreatedAt)
-		tokens = append(tokens, t)
+		rawTokens = append(rawTokens, t)
 	}
 
 	otpUrl := fmt.Sprintf("otpauth://totp/reGiO:%%20%s?secret=%s&issuer=reGiO", u.Username, u.TotpSecret)
+
+	type SessionDisplay struct {
+		Token      string
+		IP         string
+		LastActive string
+		IsCurrent  bool
+	}
+	var sessions []SessionDisplay
+	Mu.Lock()
+	for token, sUser := range ActiveSessions {
+		if sUser.ID == u.ID {
+			sessions = append(sessions, SessionDisplay{
+				Token:      token,
+				IP:         sUser.RemoteIP,
+				LastActive: RelTime(sUser.LastActive),
+				IsCurrent:  token == cookie.Value,
+			})
+		}
+	}
+	Mu.Unlock()
+
+	type TokenDisplay struct {
+		models.AppToken
+		LastUsedRel string
+	}
+	var displayTokens []TokenDisplay
+	for _, t := range rawTokens {
+		displayTokens = append(displayTokens, TokenDisplay{
+			AppToken:    t,
+			LastUsedRel: RelTime(t.LastUsed.Time),
+		})
+	}
+
 	Tmpls.ExecuteTemplate(w, "profile.html", struct {
 		User      models.User
 		OtpUrl    string
 		Error     bool
-		Tokens    []models.AppToken
+		Tokens    []TokenDisplay
 		NewToken  string
 		CSRFToken string
-	}{u, otpUrl, errorMsg, tokens, newToken, userSession.CSRFToken})
+		Sessions  []SessionDisplay
+	}{u, otpUrl, errorMsg, displayTokens, newToken, userSession.CSRFToken, sessions})
 }
 
 func HandleSetup(w http.ResponseWriter, r *http.Request) {
@@ -390,4 +493,34 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	Tmpls.ExecuteTemplate(w, "setup.html", nil)
+}
+
+// Auxiliares
+func checkServiceHealth(target string) bool {
+	client := http.Client{
+		Timeout: 2 * time.Second,
+	}
+	resp, err := client.Get(target)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode < 500
+}
+
+func RelTime(t time.Time) string {
+	if t.IsZero() {
+		return "Nunca"
+	}
+	diff := time.Since(t)
+	if diff < time.Minute {
+		return "hace unos segundos"
+	}
+	if diff < time.Hour {
+		return fmt.Sprintf("hace %d min", int(diff.Minutes()))
+	}
+	if diff < 24*time.Hour {
+		return fmt.Sprintf("hace %d horas", int(diff.Hours()))
+	}
+	return t.Format("02/01/2006")
 }

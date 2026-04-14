@@ -39,17 +39,36 @@
           </tr>
         </thead>
         <tbody>
-          {{range $host, $target := .Config.Servicios}}
-          <tr>
-            <td style="font-weight: 500; color: #818cf8">{{$host}}</td>
-            <td style="font-family: ui-monospace, monospace; color: #a1a1aa">{{$target}}</td>
+          {{range .HealthResults}}
+          <tr id="row-{{.Host}}">
+            <td style="font-weight: 500; color: #818cf8; display: flex; align-items: center; gap: 10px">
+              <span class="status-dot {{if .Alive}}online{{else}}offline{{end}}" title="{{if .Alive}}Online{{else}}Offline{{end}}"></span>
+              <span class="view-mode">{{.Host}}</span>
+              <input type="text" form="form-{{.Host}}" name="host" value="{{.Host}}" class="edit-mode" style="display:none; margin: 0; padding: 6px 12px; font-size: 13px" />
+            </td>
+            <td style="font-family: ui-monospace, monospace; color: #a1a1aa">
+              <span class="view-mode">{{.Target}}</span>
+              <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display:none; width: 100%; margin: 0; padding: 6px 12px; font-size: 13px" />
+            </td>
             <td>
-              <form method="POST" style="margin: 0">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="accion" value="delete_service" />
-                <input type="hidden" name="host" value="{{$host}}" />
-                <button class="btn-del">Eliminar</button>
-              </form>
+              <div class="view-mode" style="display: flex; gap: 8px">
+                <button class="btn-primary" style="padding: 6px 12px; font-size: 12px; background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3)" onclick="toggleEdit('{{.Host}}')">Editar</button>
+                <form method="POST" style="margin: 0" onsubmit="return confirm('¿Eliminar este puente?')">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="accion" value="delete_service" />
+                  <input type="hidden" name="host" value="{{.Host}}" />
+                  <button class="btn-del">Eliminar</button>
+                </form>
+              </div>
+              <div class="edit-mode" style="display: none; gap: 8px">
+                <form id="form-{{.Host}}" method="POST" style="margin: 0">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="accion" value="update_service" />
+                  <input type="hidden" name="old_host" value="{{.Host}}" />
+                  <button class="btn-success" style="padding: 6px 12px; font-size: 12px">Guardar</button>
+                </form>
+                <button class="btn-logout" style="padding: 6px 12px; font-size: 12px; margin: 0" onclick="toggleEdit('{{.Host}}')">Cancelar</button>
+              </div>
             </td>
           </tr>
           {{end}}
@@ -140,16 +159,11 @@
           <div style="flex-grow: 1; min-width: 200px">
             <input type="text" name="new_user" placeholder="Nombre de usuario" required style="width: 100%; margin: 0" autocomplete="username" />
           </div>
-          
-          <div style="flex-grow: 1; min-width: 200px">
-            <input type="password" name="new_pass" placeholder="Contraseña (opcional)" style="width: 100%; margin: 0" autocomplete="new-password" />
-          </div>
 
           <button type="submit" class="btn-add" style="margin: 0">Crear Usuario</button>
         </form>
         <div style="margin-top: 16px; display: flex; gap: 20px">
-          <p style="margin: 0; font-size: 12px"><small>* Si se deja vacía, el usuario la creará al entrar.</small></p>
-          <p style="margin: 0; font-size: 12px"><small>* Cada usuario gestiona su 2FA en su perfil.</small></p>
+          <p style="margin: 0; font-size: 12px"><small>* El usuario deberá configurar su contraseña al entrar por primera vez.</small></p>
         </div>
       </div>
     </div>
@@ -213,13 +227,12 @@
 
     <div class="section">
       <h2>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-          <polyline points="10 9 9 9 8 9"></polyline>
         </svg>Registro de Eventos
+        <form method="POST" style="margin: 0; display: inline" onsubmit="return confirm('¿Vaciar todo el historial de eventos?')">
+           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+           <input type="hidden" name="accion" value="clear_events" />
+           <button class="btn-del" style="margin-left: 20px; font-size: 11px; padding: 6px 12px">Vaciar Historial</button>
+        </form>
       </h2>
       <div class="log-container">
         <table>
@@ -242,6 +255,17 @@
     </div>
 
     <script>
+      function toggleEdit(host) {
+        const row = document.getElementById('row-' + host);
+        const viewModes = row.querySelectorAll('.view-mode');
+        const editModes = row.querySelectorAll('.edit-mode');
+        
+        const isEditing = editModes[0].style.display !== 'none';
+        
+        viewModes.forEach(el => el.style.display = isEditing ? 'flex' : 'none');
+        editModes.forEach(el => el.style.display = isEditing ? 'none' : 'flex');
+      }
+
       const copySvg =
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
       const checkSvg =

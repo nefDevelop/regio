@@ -71,3 +71,11 @@ func LogEvent(message string) {
 	}
 	log.Println(message)
 }
+
+func ClearEvents() error {
+	if DB != nil {
+		_, err := DB.Exec("DELETE FROM events")
+		return err
+	}
+	return nil
+}
