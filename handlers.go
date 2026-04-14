@@ -14,6 +14,7 @@ var (
 	<head>
 		<title>REGIO Login</title>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
 		<style>
 			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
 			.login-box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 360px; border: 1px solid #2d313a; }
@@ -44,6 +45,8 @@ var (
 	<html>
 	<head>
 		<title>REGIO Admin</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
 		<style>
 			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 960px; margin: 40px auto; padding: 20px; background: #0b0c10; color: #e0e0e0; }
 			.section { background: #16181d; padding: 32px; margin-top: 30px; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid #2d313a; }
@@ -75,15 +78,15 @@ var (
 	</head>
 	<body>
 		<div class="header">
-			<h1>❖ reGiO Admin Panel</h1>
+			<h1>⌂ reGiO Admin Panel</h1>
 			<div>
-				<a href="/profile" class="btn-logout" style="background:#3b82f6; margin-right: 8px;">⚇ Mi Perfil</a>
+				<a href="/profile" class="btn-logout" style="background:#3b82f6; margin-right: 8px;">♞ Mi Perfil</a>
 				<a href="/logout" class="btn-logout">Cerrar Sesión</a>
 			</div>
 		</div>
 		
 		<div class="section">
-			<h2>⎈ Gestión de Puentes (Servicios)</h2>
+			<h2>❖ Gestión de Puentes (Servicios)</h2>
 			<table>
 				<tr><th>Hostname Público</th><th>Destino Local</th><th>Acción</th></tr>
 				{{range $host, $target := .Config.Servicios}}
@@ -204,6 +207,7 @@ var (
 	<head>
 		<title>Mi Perfil - reGiO</title>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 		<style>
 			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 20px; background: #0b0c10; color: #e0e0e0; }
@@ -284,6 +288,7 @@ var (
 	<head>
 		<title>Crear Contraseña - reGiO</title>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
 		<style>
 			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
 			.login-box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 360px; border: 1px solid #2d313a; }
@@ -637,6 +642,7 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 	<head>
 		<title>Instalación - reGiO</title>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
 		<style>
 			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
 			.box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; border: 1px solid #2d313a; }

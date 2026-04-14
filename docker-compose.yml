@@ -10,6 +10,7 @@ services:
     volumes:
       - ./config.json:/root/config.json:rw
       - ./data:/root/data:rw
+      - ./static:/root/static:ro
     logging:
       driver: "json-file"
       options:

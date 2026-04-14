@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -98,6 +99,12 @@ func main() {
 			if ip, _, err = net.SplitHostPort(r.RemoteAddr); err != nil {
 				ip = r.RemoteAddr
 			}
+		}
+
+		// 0. Servir archivos estáticos (ej: icono) desde la carpeta ./static/
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))).ServeHTTP(w, r)
+			return
 		}
 
 		// 0. Modo Instalación (Setup)
