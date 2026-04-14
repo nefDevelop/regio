@@ -8,6 +8,39 @@ import (
 	"time"
 )
 
+var (
+	peticionesDB = make(map[string][]time.Time)
+	maxPeticiones = 100 // 100 peticiones
+	ventanaTiempo = 1 * time.Minute
+)
+
+func CheckRateLimit(ip string) bool {
+	Mu.Lock()
+	defer Mu.Unlock()
+
+	ahora := time.Now()
+	
+	// 1. Limpiar peticiones antiguas fuera de la ventana
+	if times, ok := peticionesDB[ip]; ok {
+		var validas []time.Time
+		for _, t := range times {
+			if ahora.Sub(t) < ventanaTiempo {
+				validas = append(validas, t)
+			}
+		}
+		peticionesDB[ip] = validas
+	}
+
+	// 2. Comprobar si excede el límite
+	if len(peticionesDB[ip]) >= maxPeticiones {
+		return false
+	}
+
+	// 3. Registrar nueva petición
+	peticionesDB[ip] = append(peticionesDB[ip], ahora)
+	return true
+}
+
 func GetSubnet(ipStr string) string {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {

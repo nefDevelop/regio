@@ -69,6 +69,12 @@ func main() {
 			}
 		}
 
+		// 0. RATE LIMITING GLOBAL (Límite: 100 peticiones / minuto)
+		if !handlers.CheckRateLimit(ip) {
+			http.Error(w, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
+			return
+		}
+
 		if strings.HasPrefix(r.URL.Path, "/static/") {
 			http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))).ServeHTTP(w, r)
 			return
