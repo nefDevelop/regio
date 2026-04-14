@@ -41,6 +41,16 @@ func CheckRateLimit(ip string) bool {
 	return true
 }
 
+func LimpiarRateLimiter() {
+	// Purgar IPs que no han hecho peticiones en 10 minutos para liberar memoria.
+	ahora := time.Now()
+	for ip, times := range peticionesDB {
+		if len(times) == 0 || ahora.Sub(times[len(times)-1]) > 10*ventanaTiempo {
+			delete(peticionesDB, ip)
+		}
+	}
+}
+
 func GetSubnet(ipStr string) string {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
