@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"encoding/json"
 	"log"
 	"net"
@@ -18,22 +17,22 @@ import (
 	"regio/internal/models"
 )
 
-//go:embed templates/*.html
-var templateFiles embed.FS
-
 func main() {
 	handlers.AdminDomain = os.Getenv("ADMIN_DOMAIN")
 	if handlers.AdminDomain == "" {
-		log.Fatal("✕ ERROR: Configura ADMIN_DOMAIN")
+		log.Fatal("✕ ERROR: Configura la variable de entorno ADMIN_DOMAIN")
 	}
 
+	// 1. Inicializar DB
 	db.InitDB()
+	
+	// 2. Comprobar si necesita instalación inicial
 	handlers.NeedsSetup = db.CheckNeedsSetup()
 	
-	// Carga centralizada de plantillas
-	tmpl := template.Must(template.ParseFS(templateFiles, "templates/*.html"))
-	handlers.InitTemplates(tmpl)
+	// 3. Inicializar plantillas y recursos internos
+	handlers.Init() 
 
+	// 4. Cargar configuración de servicios
 	configFile, err := os.ReadFile("./data/config.json")
 	if err == nil {
 		json.Unmarshal(configFile, &handlers.Config)
@@ -41,7 +40,7 @@ func main() {
 		handlers.Config.Servicios = make(map[string]string)
 	}
 
-	// Rutina de limpieza
+	// Rutina de limpieza en segundo plano (IPs bloqueadas y Rate Limiter)
 	go func() {
 		for {
 			time.Sleep(1 * time.Hour)
@@ -51,18 +50,20 @@ func main() {
 					delete(handlers.IntentosDB, ip)
 				}
 			}
-			// Limpieza del Rate Limiter para liberar RAM
 			handlers.LimpiarRateLimiter()
 			handlers.Mu.Unlock()
 		}
 	}()
 
+	// Router Principal
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Cabeceras de seguridad globales
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
+		// Obtener IP real del cliente
 		ip := r.Header.Get("CF-Connecting-IP")
 		if ip == "" {
 			var err error
@@ -77,21 +78,24 @@ func main() {
 			return
 		}
 
+		// 0. Servir archivos estáticos desde el sistema de archivos embebido
 		if strings.HasPrefix(r.URL.Path, "/static/") {
-			http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))).ServeHTTP(w, r)
+			handlers.ServeStatic(w, r)
 			return
 		}
 
+		// 1. Verificar bloqueo por IP (Fail2Ban)
 		handlers.Mu.Lock()
 		isSetup := handlers.NeedsSetup
-		reg, existe := handlers.IntentosDB[ip]
-		if existe && time.Now().Before(reg.BloqueadoHasta) {
-			handlers.Mu.Unlock()
-			http.Error(w, "IP bloqueada temporalmente.", http.StatusForbidden)
-			return
-		}
+		blocked, _ := handlers.IsIPBlocked(ip)
 		handlers.Mu.Unlock()
 
+		if blocked {
+			http.Error(w, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
+			return
+		}
+
+		// 2. Modo Instalación (Setup)
 		if isSetup {
 			if r.URL.Path == "/setup" {
 				handlers.HandleSetup(w, r)
@@ -101,11 +105,13 @@ func main() {
 			return
 		}
 
+		// 3. Ruta de Login
 		if r.URL.Path == "/REGIO-login" {
 			handlers.HandleLogin(w, r, ip)
 			return
 		}
 
+		// 4. Verificar Sesión (Cookie) o App Token
 		cookie, err := r.Cookie(handlers.SessionKey)
 		var user *models.User
 		var validSession bool
@@ -116,6 +122,7 @@ func main() {
 			handlers.Mu.Unlock()
 		}
 
+		// Si no hay sesión de navegador, intentamos API/App Tokens
 		if !validSession {
 			var tokenUsed string
 			if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
@@ -134,26 +141,32 @@ func main() {
 			}
 
 			if !validSession {
+				// Si no es un navegador, pedimos Basic Auth (con App Token)
 				if !strings.Contains(r.Header.Get("Accept"), "text/html") {
 					w.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
 					http.Error(w, "No autorizado", http.StatusUnauthorized)
 					return
 				}
+				// Si es un navegador, enviamos a login
 				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
 				return
 			}
 			_ = tokenUsed
 		}
 
+		// Ruta de Logout
 		if r.URL.Path == "/logout" {
 			handlers.Mu.Lock()
-			delete(handlers.ActiveSessions, cookie.Value)
+			if err == nil {
+				delete(handlers.ActiveSessions, cookie.Value)
+			}
 			handlers.Mu.Unlock()
 			http.SetCookie(w, &http.Cookie{Name: handlers.SessionKey, Value: "", Path: "/", MaxAge: -1})
 			http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
 			return
 		}
 
+		// 5. Rutas internas (Admin y Perfil)
 		if r.Host == handlers.AdminDomain {
 			if r.URL.Path == "/profile" {
 				handlers.HandleProfile(w, r)
@@ -173,9 +186,10 @@ func main() {
 			}
 		}
 
+		// 6. Proxy Inverso a servicios configurados
 		target, ok := handlers.Config.Servicios[r.Host]
 		if !ok {
-			http.Error(w, "Servicio no configurado", http.StatusNotFound)
+			http.Error(w, "Dominio no configurado en ReGiO: "+r.Host, http.StatusNotFound)
 			return
 		}
 
@@ -188,11 +202,12 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
-	log.Printf("⎈ REGIO iniciado. Admin en: https://%s/admin", handlers.AdminDomain)
+	log.Printf("⎈ REGIO Blindado Iniciado. Admin en: https://%s/admin", handlers.AdminDomain)
 	
+	// Configuración del servidor con timeouts para evitar DoS
 	server := &http.Server{
 		Addr:         ":80",
-		Handler:      nil, // Usa el DefaultServeMux donde registramos todo
+		Handler:      nil,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,

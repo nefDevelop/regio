@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/sha256"
+	"embed"
 	"encoding/base64"
 	"fmt"
 	"html/template"
@@ -14,6 +15,12 @@ import (
 	"regio/internal/models"
 )
 
+//go:embed templates/*.html
+var templateFiles embed.FS
+
+//go:embed static/*
+var staticFiles embed.FS
+
 var (
 	ActiveSessions = make(map[string]*models.User)
 	IntentosDB     = make(map[string]*models.Intento)
@@ -25,8 +32,12 @@ var (
 	Tmpls          *template.Template
 )
 
-func InitTemplates(t *template.Template) {
-	Tmpls = t
+func Init() {
+	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
+}
+
+func ServeStatic(w http.ResponseWriter, r *http.Request) {
+	http.FileServer(http.FS(staticFiles)).ServeHTTP(w, r)
 }
 
 func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
@@ -231,12 +242,10 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	errorMsg := false
 
 	if r.Method == "POST" {
-		// Validar CSRF
 		if r.FormValue("csrf_token") != userSession.CSRFToken {
 			http.Error(w, "Error de validación CSRF", http.StatusForbidden)
 			return
 		}
-
 		accion := r.FormValue("accion")
 		if accion == "update_profile" {
 			newUsername := r.FormValue("new_username")
@@ -303,7 +312,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	otpUrl := fmt.Sprintf("otpauth://totp/reGiO:%%20%s?secret=%s&issuer=reGiO", u.Username, u.TotpSecret)
-	tmpls.ExecuteTemplate(w, "profile.html", struct {
+	Tmpls.ExecuteTemplate(w, "profile.html", struct {
 		User      models.User
 		OtpUrl    string
 		Error     bool
@@ -311,8 +320,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 		NewToken  string
 		CSRFToken string
 	}{u, otpUrl, errorMsg, tokens, newToken, userSession.CSRFToken})
-	}
-
+}
 
 func HandleSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
