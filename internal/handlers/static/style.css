@@ -209,7 +209,7 @@ input:focus {
   text-align: center;
 }
 
-/* BUTTONS */
+/* BUTTONS - Skeleton */
 button,
 .btn-nav,
 .btn-logout,
@@ -219,6 +219,7 @@ button,
 .btn-success,
 .btn-danger,
 .btn-edit {
+  outline: none;
   border: none;
   cursor: pointer;
   font-weight: 600;
@@ -231,25 +232,27 @@ button,
   padding: 12px 24px;
   border-radius: 12px;
   font-size: 14px;
+  text-decoration: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
-/* Base button styles */
-.btn-primary {
+/* BUTTONS - Themes */
+.btn-primary,
+.btn-add {
   background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   color: white;
 }
 
-.btn-primary:hover {
-  transform: translateY(-2px);
-}
-
-.btn-success {
+.btn-success,
+.btn-add-green { /* Alias para btn-add si queremos forzar verde */
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
 
-.btn-success:hover {
-  transform: translateY(-2px);
+/* Sobrescribir btn-add para que sea verde por defecto como antes */
+.btn-add {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
 }
 
 .btn-danger {
@@ -257,56 +260,50 @@ button,
   color: white;
 }
 
-.btn-danger:hover {
-  transform: translateY(-2px);
-}
-
 .btn-nav,
 .btn-logout {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text);
-  border-radius: 14px;
-  padding: 12px 20px;
-  font-size: 14px;
-}
-
-.btn-nav:hover,
-.btn-logout:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
-}
-
-/* Contextual sizing */
-.flex-center button {
-  width: 100%;
-  padding: 16px;
-  border-radius: 14px;
-  font-size: 16px;
-  margin-top: 12px;
-}
-
-.btn-add {
-  padding: 14px 28px;
-  border-radius: 14px;
-  font-size: 14px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
 }
 
 .btn-del {
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-size: 13px;
   background: rgba(239, 68, 68, 0.12);
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.25);
+  padding: 8px 16px; /* Más compacto para tablas */
+  border-radius: 10px;
+}
+
+/* Hovers */
+button:hover,
+.btn-nav:hover,
+.btn-logout:hover,
+.btn-add:hover,
+.btn-del:hover,
+.btn-primary:hover,
+.btn-success:hover,
+.btn-danger:hover,
+.btn-edit:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
 }
 
 .btn-del:hover {
   background: var(--danger);
   color: white;
-  transform: translateY(-1px);
+}
+
+.btn-nav:hover,
+.btn-logout:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Contextual Sizing */
+.flex-center button {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
 }
 
 /* TABLES (Fixed Borders) */
