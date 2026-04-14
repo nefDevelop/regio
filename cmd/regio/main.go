@@ -87,23 +87,23 @@ func main() {
 		}
 
 		// 0. RATE LIMITING GLOBAL (Límite: 100 peticiones / minuto)
+		log.Printf("⏱️ Verificando rate limit para %s", ip)
 		if !handlers.CheckRateLimit(ip) {
+			log.Printf("⚠️ Rate limit excedido para %s", ip)
 			http.Error(w, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
 			return
 		}
 
 		// 0. Servir archivos estáticos desde el sistema de archivos embebido
 		if strings.HasPrefix(r.URL.Path, "/static/") {
+			log.Printf("📁 Sirviendo estático: %s", r.URL.Path)
 			handlers.ServeStatic(w, r)
 			return
 		}
 
 		// 1. Verificar bloqueo por IP (Fail2Ban)
-		handlers.Mu.Lock()
-		isSetup := handlers.NeedsSetup
+		log.Printf("🔒 Verificando bloqueo de IP: %s", ip)
 		blocked, _ := handlers.IsIPBlocked(ip)
-		handlers.Mu.Unlock()
-
 		if blocked {
 			log.Printf("🚫 IP Bloqueada: %s", ip)
 			http.Error(w, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
@@ -111,6 +111,10 @@ func main() {
 		}
 
 		// 2. Modo Instalación (Setup)
+		handlers.Mu.Lock()
+		isSetup := handlers.NeedsSetup
+		handlers.Mu.Unlock()
+
 		if isSetup {
 			log.Println("🛠 Modo Setup activo")
 			if r.URL.Path == "/setup" {
