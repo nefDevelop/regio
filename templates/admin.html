@@ -8,15 +8,9 @@
   </head>
   <body class="admin-view">
     <div class="header">
-      <h1>
-        <img
-          src="/static/reGiO.svg"
-          alt="logo"
-          style="height: 36px; vertical-align: middle; margin-right: 12px; margin-top: -6px; filter: invert(1)"
-        />reGiO Admin Panel
-      </h1>
+      <h1><img src="/static/reGiO.svg" alt="logo" style="height: 36px; margin-right: 12px; filter: invert(1)" />reGiO Admin Panel</h1>
       <div>
-        <a href="/profile" class="btn-logout" style="background: #3b82f6; margin-right: 8px"
+        <a href="/profile" class="btn-logout btn-primary" style="margin-right: 8px; border: none"
           ><svg
             width="16"
             height="16"
@@ -26,7 +20,7 @@
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
-            style="vertical-align: text-bottom; margin-right: 6px"
+            style="margin-right: 6px"
           >
             <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle></svg
@@ -47,7 +41,10 @@
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          style="vertical-align: text-bottom; margin-right: 8px"
+          style="margin-right: 8px"
+          style="margin-right: 8px"
+          style="margin-right: 8px"
+          style="margin-right: 8px"
         >
           <rect x="16" y="16" width="6" height="6" rx="1"></rect>
           <rect x="2" y="16" width="6" height="6" rx="1"></rect>
@@ -116,17 +113,14 @@
         </tr>
         {{range .Users}}
         <tr>
-          <td>{{.Username}}{{if .IsAdmin}} <span class="badge">Admin</span>{{end}}</td>
+          <td>{{.Username}}{{if .IsAdmin}} <span class="badge badge-admin">Admin</span>{{end}}</td>
           <td>
-            {{if .TotpActive}}<span class="badge" style="background: #10b981">Activo</span>{{else}}<span
-              class="badge"
-              style="background: #71717a"
-              >Inactivo</span
+            {{if .TotpActive}}<span class="badge badge-success">Activo</span>{{else}}<span class="badge badge-neutral">Inactivo</span
             >{{end}}
           </td>
           <td>
             {{if eq .ID 1}}
-            <span class="badge" style="background: #3f3f46; padding: 8px 14px; font-size: 13px; font-weight: normal">🔒 Protegido</span>
+            <span class="badge badge-neutral" style="padding: 6px 12px; font-size: 12px">🔒 Protegido</span>
             {{else}}
             <form method="POST">
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" /><input
@@ -187,7 +181,7 @@
                 type="hidden"
                 name="target_ip"
                 value="{{.Target}}"
-              /><button class="btn-add" style="padding: 8px 14px; font-size: 13px; background: #3b82f6">Desbloquear</button>
+              /><button class="btn-primary" style="padding: 8px 16px; border-radius: 8px; font-size: 13px">Desbloquear</button>
             </form>
           </td>
         </tr>
@@ -223,30 +217,18 @@
           <polyline points="10 9 9 9 8 9"></polyline></svg
         >Registro de Eventos
       </h2>
-      <div
-        style="max-height: 300px; overflow-y: auto; background: #1f2228; border: 1px solid #2d313a; border-radius: 12px; padding: 10px 0"
-      >
-        <table style="margin-top: 0; width: 100%">
+      <div class="log-container">
+        <table>
           {{range .Events}}
           <tr>
-            <td
-              style="
-                width: 170px;
-                color: #a1a1aa;
-                font-family: ui-monospace, monospace;
-                font-size: 13px;
-                border-bottom: none;
-                padding: 8px 20px;
-                vertical-align: top;
-              "
-            >
+            <td style="width: 170px; color: #a1a1aa; font-family: ui-monospace, monospace; font-size: 13px; vertical-align: top">
               {{.Timestamp}}
             </td>
-            <td class="log-msg" style="border-bottom: none; padding: 8px 20px; font-size: 14px; color: #e0e0e0">{{.Message}}</td>
+            <td class="log-msg" style="font-size: 14px; color: #e4e4e7">{{.Message}}</td>
           </tr>
           {{else}}
           <tr>
-            <td style="border-bottom: none; color: #a1a1aa; text-align: center; padding: 20px">No hay eventos registrados.</td>
+            <td style="color: #a1a1aa; text-align: center">No hay eventos registrados.</td>
           </tr>
           {{end}}
         </table>
@@ -254,6 +236,11 @@
     </div>
 
     <script>
+      const copySvg =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+      const checkSvg =
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
       document.querySelectorAll(".log-msg").forEach((el) => {
         // Detecta direcciones IPv4 e IPv6 (incluso si tienen sufijo CIDR tipo /24 o /64)
         const ipRegex = /((?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|(?:[a-fA-F0-9]{0,4}:){2,}[a-fA-F0-9]{1,4}(?:\/\d{1,3})?)/gi;
@@ -261,17 +248,16 @@
         if (ipRegex.test(html)) {
           el.innerHTML = html.replace(
             ipRegex,
-            '<span class="ip-match">$1</span><button class="btn-copy" onclick="copyIP(\'$1\', this)" title="Copiar IP">📋</button>',
+            `<span class="ip-match">$1</span><button class="btn-copy" onclick="copyIP('$1', this)" title="Copiar IP">${copySvg}</button>`,
           );
         }
       });
       function copyIP(ip, btn) {
         navigator.clipboard.writeText(ip);
-        let old = btn.innerText;
-        btn.innerText = "✓";
+        btn.innerHTML = checkSvg;
         btn.style.color = "#10b981";
         setTimeout(() => {
-          btn.innerText = old;
+          btn.innerHTML = copySvg;
           btn.style.color = "";
         }, 1500);
       }
