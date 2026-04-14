@@ -69,6 +69,8 @@ func main() {
 
 	// Router Principal
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("📥 [%s] %s %s (Host: %s)", r.Method, r.URL.Path, r.RemoteAddr, r.Host)
+
 		// Cabeceras de seguridad globales
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
