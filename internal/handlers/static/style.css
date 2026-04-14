@@ -286,6 +286,13 @@ button,
   margin-top: 12px;
 }
 
+.btn-add {
+  padding: 14px 28px;
+  border-radius: 14px;
+  font-size: 14px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
 
 .btn-del {
   padding: 10px 18px;
