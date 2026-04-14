@@ -21,13 +21,16 @@ body {
   margin: 0;
   min-height: 100vh;
 }
+
 a {
   text-decoration: none;
 }
+
 p {
   color: var(--text-muted);
   line-height: 1.6;
 }
+
 p small {
   color: var(--text-dim);
 }
@@ -41,11 +44,13 @@ p small {
   padding: 20px;
   box-sizing: border-box;
 }
+
 .admin-view {
   max-width: 1000px;
   margin: 40px auto;
   padding: 20px;
 }
+
 .profile-view {
   max-width: 680px;
   margin: 40px auto;
@@ -76,9 +81,11 @@ p small {
   padding: 48px 40px;
   width: 100%;
 }
+
 .login-box {
   max-width: 380px;
 }
+
 .setup-box {
   max-width: 420px;
   text-align: center;
@@ -88,6 +95,7 @@ p small {
   padding: 40px;
   margin-top: 36px;
 }
+
 .profile-view .section {
   padding: 48px;
   text-align: center;
@@ -101,6 +109,7 @@ h3 {
   margin-top: 0;
   font-weight: 600;
 }
+
 .flex-center h2 {
   text-align: center;
   font-size: 26px;
@@ -109,6 +118,7 @@ h3 {
   align-items: center;
   justify-content: center;
 }
+
 .admin-view h2 {
   font-size: 20px;
   border-bottom: 1px solid var(--surface-border);
@@ -117,6 +127,7 @@ h3 {
   display: flex;
   align-items: center;
 }
+
 .profile-view h3 {
   font-size: 20px;
   margin-bottom: 28px;
@@ -124,6 +135,7 @@ h3 {
   align-items: center;
   justify-content: center;
 }
+
 .admin-view h3 {
   color: var(--text);
   font-size: 16px;
@@ -136,12 +148,14 @@ h3 {
   align-items: center;
   margin-bottom: 40px;
 }
+
 .admin-view .header h1 {
   font-size: 28px;
   margin: 0;
   display: flex;
   align-items: center;
 }
+
 .profile-view .header h2 {
   font-size: 26px;
   margin: 0;
@@ -158,9 +172,11 @@ input {
   box-sizing: border-box;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 input::placeholder {
   color: var(--text-dim);
 }
+
 input:focus {
   outline: none;
   border-color: var(--primary);
@@ -175,6 +191,7 @@ input:focus {
   margin: 8px 0 16px 0;
   font-size: 15px;
 }
+
 .admin-view input {
   padding: 14px 18px;
   margin-right: 12px;
@@ -182,6 +199,7 @@ input:focus {
   font-size: 14px;
   width: auto;
 }
+
 .profile-view input {
   width: 100%;
   max-width: 320px;
@@ -220,6 +238,7 @@ button,
   background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   color: white;
 }
+
 .btn-primary:hover {
   transform: translateY(-2px);
 }
@@ -228,6 +247,7 @@ button,
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
+
 .btn-success:hover {
   transform: translateY(-2px);
 }
@@ -236,6 +256,7 @@ button,
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
 }
+
 .btn-danger:hover {
   transform: translateY(-2px);
 }
@@ -249,6 +270,7 @@ button,
   padding: 12px 20px;
   font-size: 14px;
 }
+
 .btn-nav:hover,
 .btn-logout:hover {
   background: rgba(255, 255, 255, 0.1);
@@ -263,13 +285,7 @@ button,
   font-size: 16px;
   margin-top: 12px;
 }
-.btn-add {
-  padding: 14px 28px;
-  border-radius: 14px;
-  font-size: 14px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-}
+
 
 .btn-del {
   padding: 10px 18px;
@@ -279,6 +295,7 @@ button,
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
+
 .btn-del:hover {
   background: var(--danger);
   color: white;
@@ -291,26 +308,33 @@ table {
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.15); /* Slightly brighter */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  /* Slightly brighter */
   border-radius: 16px;
   background: rgba(0, 0, 0, 0.25);
   overflow: hidden;
 }
+
 th,
 td {
   padding: 18px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* Visible bottom border */
-  border-right: 1px solid rgba(255, 255, 255, 0.06); /* New lateral border */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  /* Visible bottom border */
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  /* New lateral border */
   text-align: left;
   font-size: 14px;
 }
+
 th:last-child,
 td:last-child {
   border-right: none;
 }
+
 tr:last-child td {
   border-bottom: none;
 }
+
 th {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
@@ -319,9 +343,11 @@ th {
   font-size: 11px;
   letter-spacing: 0.8px;
 }
+
 tr {
   transition: background-color 0.2s ease;
 }
+
 tr:hover td {
   background-color: rgba(255, 255, 255, 0.04);
 }
@@ -350,16 +376,19 @@ tr:hover td {
   letter-spacing: 0.5px;
   display: inline-block;
 }
+
 .badge-admin {
   background: rgba(99, 102, 241, 0.15);
   color: #818cf8;
   border: 1px solid rgba(99, 102, 241, 0.3);
 }
+
 .badge-success {
   background: rgba(16, 185, 129, 0.15);
   color: #34d399;
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
+
 .badge-neutral {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
@@ -374,11 +403,13 @@ tr:hover td {
   border-radius: 16px;
   padding: 8px 0;
 }
+
 .log-container table {
   margin: 0;
   border: none;
   background: transparent;
 }
+
 .log-container td {
   padding: 12px 24px;
   border-bottom: none;
@@ -398,6 +429,7 @@ tr:hover td {
   align-items: center;
   justify-content: center;
 }
+
 .btn-copy:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
@@ -425,16 +457,19 @@ tr:hover td {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 5px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
   border: 2px solid transparent;
@@ -448,9 +483,11 @@ tr:hover td {
   border-radius: 50%;
   flex-shrink: 0;
 }
+
 .status-dot.online {
   background-color: var(--success);
 }
+
 .status-dot.offline {
   background-color: var(--danger);
 }
@@ -463,6 +500,7 @@ tr:hover td {
   border-radius: 10px;
   font-size: 13px;
 }
+
 .btn-edit:hover {
   background: var(--primary);
   color: white;
