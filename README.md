@@ -1,86 +1,83 @@
-# 🛡️ reGiO: Secure Reverse Proxy & Admin Panel
+# reGiO: Reverse Proxy Seguro con Panel de Administración
 
-**reGiO** es un portero (reverse proxy) ligero y ultra-seguro escrito en Go, diseñado para proteger tus servicios locales expuestos a internet (ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o Ngrok).
+**reGiO** es un proxy inverso ligero y seguro escrito en Go, diseñado para proteger tus servicios locales expuestos a internet (ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o Ngrok).
 
 Ofrece una capa de **autenticación centralizada**, **bloqueo automático de ataques por fuerza bruta** y un **panel de administración web** para gestionar tus redirecciones de forma visual.
 
 ---
 
-## ✨ Características Principales
+## Características
 
-- **Autenticación Centralizada:** Protege todos tus servicios (NAS, Plex, Home Assistant, etc.) con una sola cuenta de usuario/contraseña vía Basic Auth.
-- **Anti-Brute Force (Fail2Ban):** Bloqueo automático de IPs tras 5 intentos fallidos durante 15 minutos. Detecta la IP real del atacante incluso detrás de Cloudflare (`CF-Connecting-IP`).
-- **Panel de Administración Web:** Gestiona tus puentes (Mappings) de `Dominio -> Puerto` directamente desde el navegador sin tocar archivos JSON ni reiniciar el servidor.
-- **Docker Ready:** Despliegue en segundos con Docker y Docker Compose. Imagen ultra-ligera basada en Alpine Linux (< 15MB).
-- **Configuración Dinámica:** Los cambios realizados en el panel persisten en un archivo `config.json` local.
+- **Autenticación Multi-Usuario:** Sistema de inicio de sesión seguro basado en sesiones. Permite crear múltiples usuarios y gestionar sus accesos desde el panel de administrador.
+- **Soporte para 2FA (TOTP):** Los usuarios pueden activar la autenticación en dos pasos (compatible con Google Authenticator, Authy, etc.) para una capa extra de seguridad.
+- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs y rangos de red tras repetidos intentos de inicio de sesión fallidos. Detecta la IP real del atacante incluso detrás de Cloudflare.
+- **Panel de Administración Web:** Interfaz gráfica para gestionar puentes (redirecciones), usuarios, bloqueos de IP y visualizar un registro de eventos.
+- **Docker Ready:** Despliegue rápido y sencillo con Docker. Imagen ultra-ligera (< 15MB).
+- **Configuración Dinámica:** Los cambios en los puentes se guardan en `config.json` y se aplican al instante sin reinicios.
 
 ---
 
-## Instalación Rápida
+## Instalación
 
-### 1. Requisitos
+### Requisitos
 
 - Docker y Docker Compose instalados.
 - Un dominio o subdominio apuntando a tu servidor (ej: vía Cloudflare Tunnel).
 
-### 2. Clonar y Configurar
+### Pasos
 
 ```bash
-git clone https://github.com/tu-usuario/REGIO.git
-cd REGIO
+git clone https://github.com/nef734/regio.git
+cd regio
 
-# Configura tus credenciales y dominio de administración
+# Configura el dominio que usarás para acceder al panel de administración
 cp .env.example .env
 nano .env
-```
 
-### 3. Preparar archivos
-
-```bash
 # Crea un archivo de configuración vacío
 echo '{"servicios": {}}' > config.json
-```
 
-### 4. Desplegar
-
-```bash
+# Despliega el contenedor
 docker-compose up -d --build
 ```
 
 ---
 
-## 🛠️ Configuración de Cloudflare Tunnel
+## Ejemplo de Configuración (Cloudflare Tunnel)
 
-Para que el REGIO funcione correctamente, debes configurar tus **Public Hostnames** en el panel de Cloudflare Zero Trust apuntando todos al mismo puerto del REGIO (por defecto `9999`):
+Para que reGiO funcione correctamente, debes configurar tus **Public Hostnames** en el panel de Cloudflare Zero Trust apuntando todos al mismo servicio local donde se ejecuta reGiO (por defecto, el puerto `80` del contenedor):
 
-- `auth.tudominio.com` -> `http://localhost:9999` (Panel Admin)
-- `nas.tudominio.com` -> `http://localhost:9999` (Tu NAS)
-- `app.tudominio.com` -> `http://localhost:9999` (Otra App)
-
----
-
-## 🖥️ Uso del Panel de Administración
-
-1.  Accede a la URL definida en tu `.env` bajo `ADMIN_DOMAIN` seguido de `/admin`.
-    - Ejemplo: `https://auth.tudominio.com/admin`
-2.  Introduce el usuario y contraseña configurados en tu archivo `.env`.
-3.  **Añadir Servicio:** Introduce el dominio público (ej: `nas.tudominio.com`) y el destino interno (ej: `http://localhost:4545`).
-4.  **Eliminar Servicio:** Haz clic en "Eliminar" para desactivar un puente al instante.
+- `admin.tudominio.com` -> `http://localhost:80` (Panel Admin, según tu `ADMIN_DOMAIN`)
+- `nas.tudominio.com` -> `http://localhost:80` (Tu NAS)
+- `app.tudominio.com` -> `http://localhost:80` (Otra App)
 
 ---
 
-## 🔐 Seguridad y Privacidad
+## Uso y Primeros Pasos
 
-- **Variables de Entorno:** Las credenciales nunca se guardan en el código fuente.
+1.  **Primer Inicio (Instalación):** Al acceder por primera vez a cualquier dominio gestionado por reGiO, serás redirigido a una página de instalación para crear tu cuenta de administrador principal.
+2.  **Inicio de Sesión:** Una vez configurado, accede al panel de administración en la URL definida en tu variable `ADMIN_DOMAIN` (ej: `https://admin.tudominio.com/admin`).
+3.  **Gestión de Puentes:** En el panel, puedes añadir un dominio público (ej: `nas.tudominio.com`) y su destino local correspondiente.
+    - **Importante sobre el "Destino Local":** Como reGiO se ejecuta en Docker, `localhost` significa "el interior del propio contenedor". En su lugar, usa:
+      - **Si el servicio es otro contenedor (misma red Docker):** Usa el nombre del contenedor (ej: `http://nextcloud:80` o `http://plex:32400`).
+      - **Si el servicio está en tu servidor (host) u otro equipo local:** Usa la IP local de tu red (ej: `http://192.168.1.50:8080`).
+4.  **Gestión de Usuarios:** El administrador puede crear nuevos usuarios. Los usuarios nuevos sin contraseña asignada podrán crearla en su primer inicio de sesión.
+5.  **Perfil de Usuario:** Cada usuario puede acceder a su perfil para cambiar su nombre/contraseña y activar/desactivar el 2FA.
+
+---
+
+## Seguridad y Privacidad
+
+- **Variables de Entorno:** La configuración sensible (como el dominio de administración) se gestiona fuera del código.
 - **No-Root:** El contenedor está diseñado para ser ejecutado con privilegios mínimos (opcional según configuración).
-- **Aislamiento:** Tus aplicaciones reales no necesitan estar expuestas al exterior; el REGIO actúa como el único punto de entrada.
+- **Aislamiento:** Tus aplicaciones reales no necesitan estar expuestas al exterior; reGiO actúa como el único punto de entrada.
 
 ---
 
-## 📄 Licencia
+## Licencia
 
 Este proyecto está bajo la Licencia MIT. Siéntete libre de usarlo, modificarlo y compartirlo.
 
 ---
 
-_Hecho con ❤️ para la comunidad Self-Hosted._
+_Hecho para la comunidad Self-Hosted._

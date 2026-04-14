@@ -68,6 +68,9 @@ var (
 			.btn-logout { background: #3f3f46; color: white; text-decoration: none; padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
 			.btn-logout:hover { background: #52525b; }
 			p small { color: #a1a1aa; }
+			.btn-copy { background: transparent; border: none; cursor: pointer; font-size: 16px; color: #a1a1aa; padding: 0 6px; transition: color 0.2s; vertical-align: middle; }
+			.btn-copy:hover { color: #ffffff; }
+			.ip-match { font-family: ui-monospace, monospace; color: #60a5fa; }
 		</style>
 	</head>
 	<body>
@@ -166,7 +169,7 @@ var (
 					{{range .Events}}
 					<tr>
 						<td style="width: 170px; color: #a1a1aa; font-family: ui-monospace, monospace; font-size: 13px; border-bottom: none; padding: 8px 20px; vertical-align: top;">{{.Timestamp}}</td>
-						<td style="border-bottom: none; padding: 8px 20px; font-size: 14px; color: #e0e0e0;">{{.Message}}</td>
+						<td class="log-msg" style="border-bottom: none; padding: 8px 20px; font-size: 14px; color: #e0e0e0;">{{.Message}}</td>
 					</tr>
 					{{else}}
 					<tr><td style="border-bottom: none; color: #a1a1aa; text-align: center; padding: 20px;">No hay eventos registrados.</td></tr>
@@ -174,6 +177,24 @@ var (
 				</table>
 			</div>
 		</div>
+
+		<script>
+			document.querySelectorAll('.log-msg').forEach(el => {
+				// Detecta direcciones IPv4 e IPv6 (incluso si tienen sufijo CIDR tipo /24 o /64)
+				const ipRegex = /((?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|(?:[a-fA-F0-9]{0,4}:){2,}[a-fA-F0-9]{1,4}(?:\/\d{1,3})?)/gi;
+				let html = el.innerHTML;
+				if (ipRegex.test(html)) {
+					el.innerHTML = html.replace(ipRegex, '<span class="ip-match">$1</span><button class="btn-copy" onclick="copyIP(\'$1\', this)" title="Copiar IP">📋</button>');
+				}
+			});
+			function copyIP(ip, btn) {
+				navigator.clipboard.writeText(ip);
+				let old = btn.innerText;
+				btn.innerText = '✓';
+				btn.style.color = '#10b981';
+				setTimeout(() => { btn.innerText = old; btn.style.color = ''; }, 1500);
+			}
+		</script>
 	</body>
 	</html>`))
 
