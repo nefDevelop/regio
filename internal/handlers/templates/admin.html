@@ -52,7 +52,7 @@
             </td>
             <td>
               <div class="view-mode" style="display: flex; gap: 8px">
-                <button class="btn-primary" style="padding: 6px 12px; font-size: 12px; background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3)" onclick="toggleEdit('{{.Host}}')">Editar</button>
+                <button class="btn-edit" style="padding: 6px 12px; font-size: 12px" onclick="toggleEdit('{{.Host}}')">Editar</button>
                 <form method="POST" style="margin: 0" onsubmit="return confirm('¿Eliminar este puente?')">
                   <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                   <input type="hidden" name="accion" value="delete_service" />
