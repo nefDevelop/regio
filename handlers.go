@@ -1,319 +1,17 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"html/template"
 	"net/http"
 	"time"
 )
 
-var (
-	loginTmpl = template.Must(template.New("login").Parse(`
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>REGIO Login</title>
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
-			.login-box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 360px; border: 1px solid #2d313a; }
-			h2 { margin-top: 0; color: #ffffff; text-align: center; font-size: 24px; font-weight: 600; margin-bottom: 25px; }
-			input { width: 100%; padding: 14px 16px; margin: 8px 0 16px 0; background: #1f2228; border: 1px solid #2d313a; color: #ffffff; border-radius: 12px; box-sizing: border-box; font-size: 15px; transition: all 0.2s ease; }
-			input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-			button { width: 100%; padding: 14px; background: #3b82f6; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: all 0.2s ease; }
-			button:hover { background: #2563eb; transform: translateY(-1px); }
-			.error { color: #ff7675; background: rgba(255, 118, 117, 0.1); border: 1px solid rgba(255, 118, 117, 0.2); padding: 12px; border-radius: 12px; font-size: 14px; text-align: center; margin-bottom: 20px; }
-		</style>
-	</head>
-	<body>
-		<div class="login-box">
-			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">reGiO Login</h2>
-			{{if .}} <div class="error">Usuario, contraseña o 2FA incorrectos</div> {{end}}
-			<form method="POST">
-				<input type="text" name="user" placeholder="Usuario" required autofocus>
-				<input type="password" name="pass" placeholder="Contraseña (vacío si eres nuevo)">
-				<input type="text" name="2fa" placeholder="Código 2FA (Opcional)" inputmode="numeric" autocomplete="one-time-code">
-				<button type="submit">Iniciar Sesión</button>
-			</form>
-		</div>
-	</body>
-	</html>`))
+//go:embed templates/*.html
+var templateFiles embed.FS
 
-	adminTmpl = template.Must(template.New("admin").Parse(`
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>REGIO Admin</title>
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 960px; margin: 40px auto; padding: 20px; background: #0b0c10; color: #e0e0e0; }
-			.section { background: #16181d; padding: 32px; margin-top: 30px; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid #2d313a; }
-			h2 { color: #ffffff; margin-top: 0; font-size: 20px; border-bottom: 1px solid #2d313a; padding-bottom: 15px; margin-bottom: 20px; }
-			h3 { color: #e0e0e0; font-size: 16px; margin-top: 25px; }
-			table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px; }
-			th, td { padding: 14px 16px; border-bottom: 1px solid #2d313a; text-align: left; font-size: 15px; }
-			th { background: #1f2228; color: #a1a1aa; font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; }
-			th:first-child { border-top-left-radius: 12px; }
-			th:last-child { border-top-right-radius: 12px; }
-			td:first-child { border-left: 1px solid transparent; }
-			.btn-del { background: #ef4444; color: white; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
-			.btn-del:hover { background: #dc2626; }
-			input { padding: 12px 16px; background: #1f2228; border: 1px solid #2d313a; color: #ffffff; border-radius: 12px; margin-right: 10px; margin-bottom: 10px; font-size: 14px; transition: all 0.2s; }
-			input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-			.btn-add { background: #10b981; color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s; }
-			.btn-add:hover { background: #059669; }
-			.totp-secret { background: #1f2228; padding: 6px 10px; border-radius: 8px; font-family: ui-monospace, monospace; color: #a1a1aa; border: 1px solid #2d313a; font-size: 13px; }
-			.badge { background: #3b82f6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; margin-left: 8px; vertical-align: middle; font-weight: 600; letter-spacing: 0.5px; }
-			.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-			.header h1 { color: #ffffff; font-size: 28px; margin: 0; }
-			.btn-logout { background: #3f3f46; color: white; text-decoration: none; padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
-			.btn-logout:hover { background: #52525b; }
-			p small { color: #a1a1aa; }
-			.btn-copy { background: transparent; border: none; cursor: pointer; font-size: 16px; color: #a1a1aa; padding: 0 6px; transition: color 0.2s; vertical-align: middle; }
-			.btn-copy:hover { color: #ffffff; }
-			.ip-match { font-family: ui-monospace, monospace; color: #60a5fa; }
-		</style>
-	</head>
-	<body>
-		<div class="header">
-			<h1>⌂ reGiO Admin Panel</h1>
-			<div>
-				<a href="/profile" class="btn-logout" style="background:#3b82f6; margin-right: 8px;">♞ Mi Perfil</a>
-				<a href="/logout" class="btn-logout">Cerrar Sesión</a>
-			</div>
-		</div>
-		
-		<div class="section">
-			<h2>❖ Gestión de Puentes (Servicios)</h2>
-			<table>
-				<tr><th>Hostname Público</th><th>Destino Local</th><th>Acción</th></tr>
-				{{range $host, $target := .Config.Servicios}}
-				<tr>
-					<td>{{$host}}</td>
-					<td>{{$target}}</td>
-					<td>
-						<form method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="accion" value="delete_service"><input type="hidden" name="host" value="{{$host}}"><button class="btn-del">Eliminar</button></form>
-					</td>
-				</tr>
-				{{end}}
-			</table>
-			<br>
-			<h3>Añadir Nuevo Puente</h3>
-			<form method="POST">
-				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-				<input type="hidden" name="accion" value="add_service">
-				<input type="text" name="host" placeholder="nas.tudominio.com" required>
-				<input type="text" name="target" placeholder="http://localhost:4545" required>
-				<button type="submit" class="btn-add">Añadir Puente</button>
-			</form>
-		</div>
-
-		<div class="section">
-			<h2>⚇ Gestión de Usuarios</h2>
-			<table>
-				<tr><th>Usuario</th><th>Estado 2FA</th><th>Acción</th></tr>
-				{{range .Users}}
-				<tr>
-					<td>{{.Username}}{{if .IsAdmin}} <span class="badge">Admin</span>{{end}}</td>
-					<td>{{if .TotpActive}}<span class="badge" style="background:#10b981;">Activo</span>{{else}}<span class="badge" style="background:#71717a;">Inactivo</span>{{end}}</td>
-					<td>
-						{{if eq .ID 1}}
-							<span class="badge" style="background:#3f3f46; padding: 8px 14px; font-size: 13px; font-weight: normal;">🔒 Protegido</span>
-						{{else}}
-							<form method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="accion" value="delete_user"><input type="hidden" name="del_user" value="{{.Username}}"><button class="btn-del">Eliminar</button></form>
-						{{end}}
-					</td>
-				</tr>
-				{{end}}
-			</table>
-			<br>
-			<h3>Crear Nuevo Usuario</h3>
-			<form method="POST">
-				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-				<input type="hidden" name="accion" value="add_user">
-				<input type="text" name="new_user" placeholder="Nombre de usuario" required>
-				<input type="password" name="new_pass" placeholder="Contraseña (dejar en blanco para que el usuario la cree)">
-				<button type="submit" class="btn-add">Crear Usuario</button>
-			</form>
-			<p><small>* Si dejas la contraseña en blanco, el usuario la creará al iniciar sesión por primera vez.</small></p>
-			<p><small>* Los usuarios podrán generar su código QR para el 2FA entrando a su Perfil.</small></p>
-		</div>
-
-		<div class="section">
-			<h2>⊘ Gestión de Seguridad (Fail2Ban)</h2>
-			<table>
-				<tr><th>IP o Rango</th><th>Bloqueado Hasta</th><th>Acción</th></tr>
-				{{range .BannedIPs}}
-				<tr>
-					<td>{{.Target}}</td>
-					<td>{{.Hasta}}</td>
-					<td>
-						<form method="POST"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="accion" value="unban_ip"><input type="hidden" name="target_ip" value="{{.Target}}"><button class="btn-add" style="padding: 8px 14px; font-size: 13px; background:#3b82f6;">Desbloquear</button></form>
-					</td>
-				</tr>
-				{{end}}
-			</table>
-			<br>
-			<h3>Bloquear IP / Rango manualmente</h3>
-			<form method="POST">
-				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-				<input type="hidden" name="accion" value="ban_ip">
-				<input type="text" name="target_ip" placeholder="192.168.1.50 o 10.0.0.0/24" required>
-				<button type="submit" class="btn-del">Bloquear</button>
-			</form>
-		</div>
-
-		<div class="section">
-			<h2>📋 Registro de Eventos</h2>
-			<div style="max-height: 300px; overflow-y: auto; background: #1f2228; border: 1px solid #2d313a; border-radius: 12px; padding: 10px 0;">
-				<table style="margin-top: 0; width: 100%;">
-					{{range .Events}}
-					<tr>
-						<td style="width: 170px; color: #a1a1aa; font-family: ui-monospace, monospace; font-size: 13px; border-bottom: none; padding: 8px 20px; vertical-align: top;">{{.Timestamp}}</td>
-						<td class="log-msg" style="border-bottom: none; padding: 8px 20px; font-size: 14px; color: #e0e0e0;">{{.Message}}</td>
-					</tr>
-					{{else}}
-					<tr><td style="border-bottom: none; color: #a1a1aa; text-align: center; padding: 20px;">No hay eventos registrados.</td></tr>
-					{{end}}
-				</table>
-			</div>
-		</div>
-
-		<script>
-			document.querySelectorAll('.log-msg').forEach(el => {
-				// Detecta direcciones IPv4 e IPv6 (incluso si tienen sufijo CIDR tipo /24 o /64)
-				const ipRegex = /((?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|(?:[a-fA-F0-9]{0,4}:){2,}[a-fA-F0-9]{1,4}(?:\/\d{1,3})?)/gi;
-				let html = el.innerHTML;
-				if (ipRegex.test(html)) {
-					el.innerHTML = html.replace(ipRegex, '<span class="ip-match">$1</span><button class="btn-copy" onclick="copyIP(\'$1\', this)" title="Copiar IP">📋</button>');
-				}
-			});
-			function copyIP(ip, btn) {
-				navigator.clipboard.writeText(ip);
-				let old = btn.innerText;
-				btn.innerText = '✓';
-				btn.style.color = '#10b981';
-				setTimeout(() => { btn.innerText = old; btn.style.color = ''; }, 1500);
-			}
-		</script>
-	</body>
-	</html>`))
-
-	profileTmpl = template.Must(template.New("profile").Parse(`
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Mi Perfil - reGiO</title>
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 20px; background: #0b0c10; color: #e0e0e0; }
-			.section { background: #16181d; padding: 40px; margin-top: 30px; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); text-align: center; border: 1px solid #2d313a; }
-			h3 { color: #ffffff; font-size: 20px; margin-top: 0; margin-bottom: 25px; }
-			input { width: 100%; max-width: 320px; padding: 14px 16px; background: #1f2228; border: 1px solid #2d313a; color: #ffffff; border-radius: 12px; margin-bottom: 16px; font-size: 16px; text-align: center; transition: all 0.2s; }
-			input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-			.btn-add { background: #10b981; color: white; border: none; padding: 14px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; width: 100%; max-width: 320px; font-size: 15px; transition: all 0.2s; }
-			.btn-add:hover { background: #059669; transform: translateY(-1px); }
-			.btn-del { background: #ef4444; color: white; border: none; padding: 14px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; width: 100%; max-width: 320px; font-size: 15px; transition: all 0.2s; }
-			.btn-del:hover { background: #dc2626; transform: translateY(-1px); }
-			#qrcode { display: flex; justify-content: center; margin: 24px auto; background: white; padding: 20px; border-radius: 16px; width: fit-content; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-			.secret-text { background: #1f2228; padding: 8px 12px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 15px; letter-spacing: 2px; color: #e0e0e0; border: 1px solid #2d313a; }
-			.header { display: flex; justify-content: space-between; align-items: center; }
-			.header h2 { margin: 0; font-size: 24px; color: #ffffff; }
-			.btn-nav { background: #3f3f46; color: white; text-decoration: none; padding: 10px 18px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
-			.btn-nav:hover { background: #52525b; }
-			.error { color: #ff7675; background: rgba(255, 118, 117, 0.1); border: 1px solid rgba(255, 118, 117, 0.2); padding: 12px; border-radius: 12px; font-size: 14px; text-align: center; margin-bottom: 20px; max-width: 320px; margin: 0 auto 20px auto; }
-			p { color: #a1a1aa; line-height: 1.5; }
-		</style>
-	</head>
-	<body>
-		<div class="header">
-			<h2>⚇ Mi Perfil</h2>
-			<div>
-				{{if .User.IsAdmin}}<a href="/admin" class="btn-nav" style="margin-right: 8px; background: #3b82f6;">Volver al Panel</a>{{end}}
-				<a href="/logout" class="btn-nav">Cerrar Sesión</a>
-			</div>
-		</div>
-		
-		<div class="section">
-			<h3>✎ Detalles de la Cuenta</h3>
-			<form method="POST">
-				<input type="hidden" name="accion" value="update_profile">
-				<input type="text" name="new_username" value="{{.User.Username}}" required>
-				<input type="password" name="new_password" placeholder="Nueva contraseña (opcional)">
-				<button class="btn-add" style="background:#3b82f6;">Guardar Cambios</button>
-			</form>
-		</div>
-
-		<div class="section">
-			<h3>Autenticación en Dos Pasos (2FA)</h3>
-			{{if .User.TotpActive}}
-				<p style="color: #10b981; font-weight: 600; margin-bottom: 24px; font-size: 16px;">✓ El 2FA está activado y protegiendo tu cuenta.</p>
-				<form method="POST">
-					<input type="hidden" name="accion" value="disable_2fa">
-					<button class="btn-del">Desactivar 2FA</button>
-				</form>
-			{{else}}
-				<p>Aumenta la seguridad de tu cuenta activando el 2FA.</p>
-				<p style="font-size: 14px;">1. Escanea este código con Google Authenticator o Authy:</p>
-				<div id="qrcode"></div>
-				<p style="font-size: 14px;">O usa la clave manual: <span class="secret-text">{{.User.TotpSecret}}</span></p>
-				
-				<hr style="border:0; border-top:1px solid #2d313a; margin: 30px 0;">
-				
-				<p style="font-size: 14px;">2. Introduce el código generado para confirmar:</p>
-				<form method="POST">
-					<input type="hidden" name="accion" value="enable_2fa">
-					{{if .Error}}<div class="error">Código incorrecto, inténtalo de nuevo.</div>{{end}}
-					<input type="text" name="code" placeholder="Código de 6 dígitos" required inputmode="numeric" autocomplete="one-time-code"><br>
-					<button class="btn-add">Activar 2FA</button>
-				</form>
-				<script>
-					new QRCode(document.getElementById("qrcode"), {
-						text: "{{.OtpUrl}}", width: 150, height: 150,
-						colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.M
-					});
-				</script>
-			{{end}}
-		</div>
-	</body>
-	</html>`))
-
-	setPasswordTmpl = template.Must(template.New("setpassword").Parse(`
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Crear Contraseña - reGiO</title>
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
-			.login-box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 360px; border: 1px solid #2d313a; }
-			h2 { margin-top: 0; color: #ffffff; text-align: center; font-size: 24px; font-weight: 600; }
-			p { text-align: center; color: #a1a1aa; font-size: 15px; margin-bottom: 25px; line-height: 1.5; }
-			input { width: 100%; padding: 14px 16px; margin: 8px 0 16px 0; background: #1f2228; border: 1px solid #2d313a; color: #ffffff; border-radius: 12px; box-sizing: border-box; font-size: 15px; transition: all 0.2s ease; }
-			input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-			button { width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: all 0.2s ease; }
-			button:hover { background: #059669; transform: translateY(-1px); }
-		</style>
-	</head>
-	<body>
-		<div class="login-box">
-			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">Hola, {{.}}</h2>
-			<p>Bienvenido. Por favor, crea tu contraseña para continuar.</p>
-			<form method="POST" action="/REGIO-login">
-				<input type="hidden" name="step" value="set_password">
-				<input type="hidden" name="user" value="{{.}}">
-				<input type="password" name="new_pass" placeholder="Nueva Contraseña" required autofocus>
-				<button type="submit">Guardar y Entrar</button>
-			</form>
-		</div>
-	</body>
-	</html>`))
-)
+var tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
 
 func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 	if r.Method == "POST" {
@@ -351,7 +49,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 				}
 			}
 			// Mostrar pantalla para crear la contraseña
-			setPasswordTmpl.Execute(w, inputUser)
+			tmpls.ExecuteTemplate(w, "setpassword.html", inputUser)
 			return
 		}
 
@@ -413,7 +111,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		return
 	}
 
-	loginTmpl.Execute(w, r.URL.Query().Get("error") != "")
+	tmpls.ExecuteTemplate(w, "login.html", r.URL.Query().Get("error") != "")
 }
 
 type BannedIP struct {
@@ -546,7 +244,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 		Events:    events,
 	}
 
-	adminTmpl.Execute(w, data)
+	tmpls.ExecuteTemplate(w, "admin.html", data)
 }
 
 func handleProfile(w http.ResponseWriter, r *http.Request) {
@@ -609,7 +307,7 @@ func handleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	otpUrl := fmt.Sprintf("otpauth://totp/reGiO:%%20%s?secret=%s&issuer=reGiO", u.Username, u.TotpSecret)
-	profileTmpl.Execute(w, struct {
+	tmpls.ExecuteTemplate(w, "profile.html", struct {
 		User   User
 		OtpUrl string
 		Error  bool
@@ -636,37 +334,5 @@ func handleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tmpl := `
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Instalación - reGiO</title>
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="icon" type="image/svg+xml" href="/static/reGiO.svg">
-		<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0b0c10; color: #e0e0e0; margin:0; }
-			.box { background: #16181d; padding: 40px; border-radius: 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; border: 1px solid #2d313a; }
-			h2 { margin-top: 0; color: #ffffff; font-size: 24px; font-weight: 600; margin-bottom: 10px; }
-            p { color: #a1a1aa; font-size: 15px; margin-bottom: 25px; }
-			input { width: 100%; padding: 14px 16px; margin: 8px 0 16px 0; background: #1f2228; border: 1px solid #2d313a; color: #ffffff; border-radius: 12px; box-sizing: border-box; font-size: 15px; transition: all 0.2s ease; }
-			input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-			button { width: 100%; padding: 14px; background: #10b981; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: all 0.2s ease; }
-			button:hover { background: #059669; transform: translateY(-1px); }
-		</style>
-	</head>
-	<body>
-		<div class="box">
-			<h2><img src="/static/reGiO.svg" alt="logo" style="height: 32px; vertical-align: middle; margin-right: 10px; margin-top: -4px; filter: invert(1);">Bienvenido a reGiO</h2>
-			<p>Crea tu cuenta de administrador.</p>
-			<form method="POST">
-				<input type="text" name="user" placeholder="Nombre de usuario" required autofocus>
-				<input type="password" name="pass" placeholder="Contraseña segura" required>
-				<button type="submit">Finalizar Instalación</button>
-			</form>
-		</div>
-	</body>
-	</html>`
-
-	t := template.Must(template.New("setup").Parse(tmpl))
-	t.Execute(w, nil)
+	tmpls.ExecuteTemplate(w, "setup.html", nil)
 }

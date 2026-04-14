@@ -1,0 +1,355 @@
+/* BASE */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #0b0c10;
+  color: #e0e0e0;
+  margin: 0;
+}
+a {
+  text-decoration: none;
+}
+p {
+  color: #a1a1aa;
+  line-height: 1.5;
+}
+p small {
+  color: #a1a1aa;
+}
+
+/* LAYOUTS */
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+.admin-view {
+  max-width: 960px;
+  margin: 40px auto;
+  padding: 20px;
+}
+.profile-view {
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 20px;
+}
+
+/* CONTAINERS */
+.login-box,
+.setup-box {
+  background: #16181d;
+  padding: 40px;
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  border: 1px solid #2d313a;
+  box-sizing: border-box;
+}
+.login-box {
+  max-width: 360px;
+}
+.setup-box {
+  max-width: 400px;
+  text-align: center;
+}
+
+.section {
+  background: #16181d;
+  padding: 32px;
+  margin-top: 30px;
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid #2d313a;
+}
+.profile-view .section {
+  padding: 40px;
+  text-align: center;
+}
+
+/* HEADINGS */
+h2,
+h3 {
+  color: #ffffff;
+  margin-top: 0;
+}
+.flex-center h2 {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 25px;
+}
+.admin-view h2 {
+  font-size: 20px;
+  border-bottom: 1px solid #2d313a;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+.profile-view h3 {
+  font-size: 20px;
+  margin-bottom: 25px;
+}
+.admin-view h3 {
+  color: #e0e0e0;
+  font-size: 16px;
+  margin-top: 25px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+.admin-view .header h1 {
+  color: #ffffff;
+  font-size: 28px;
+  margin: 0;
+}
+.profile-view .header h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+/* FORMS & INPUTS */
+input {
+  background: #1f2228;
+  border: 1px solid #2d313a;
+  color: #ffffff;
+  border-radius: 12px;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.flex-center input {
+  width: 100%;
+  padding: 14px 16px;
+  margin: 8px 0 16px 0;
+  font-size: 15px;
+}
+.admin-view input {
+  padding: 12px 16px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  width: auto;
+}
+.profile-view input {
+  width: 100%;
+  max-width: 320px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* BUTTONS */
+button,
+.btn-nav,
+.btn-logout,
+.btn-add,
+.btn-del {
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Full width buttons (Login/Setup) */
+.flex-center button {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 16px;
+  margin-top: 10px;
+  color: white;
+}
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+.btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+.btn-success:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+/* Admin Buttons */
+.admin-view .btn-add {
+  background: #10b981;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.admin-view .btn-add:hover {
+  background: #059669;
+}
+.admin-view .btn-del {
+  background: #ef4444;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.admin-view .btn-del:hover {
+  background: #dc2626;
+}
+
+/* Profile Buttons */
+.profile-view .btn-add,
+.profile-view .btn-del {
+  padding: 14px 20px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 320px;
+  font-size: 15px;
+  display: inline-block;
+  color: white;
+}
+.profile-view .btn-add {
+  background: #10b981;
+}
+.profile-view .btn-add:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+.profile-view .btn-del {
+  background: #ef4444;
+}
+.profile-view .btn-del:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+/* Nav Buttons */
+.btn-nav,
+.btn-logout {
+  background: #3f3f46;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  display: inline-block;
+}
+.btn-nav:hover,
+.btn-logout:hover {
+  background: #52525b;
+}
+
+/* TABLES */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 10px;
+}
+th,
+td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #2d313a;
+  text-align: left;
+  font-size: 15px;
+}
+th {
+  background: #1f2228;
+  color: #a1a1aa;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+th:first-child {
+  border-top-left-radius: 12px;
+}
+th:last-child {
+  border-top-right-radius: 12px;
+}
+td:first-child {
+  border-left: 1px solid transparent;
+}
+
+/* UTILITIES */
+.error {
+  color: #ff7675;
+  background: rgba(255, 118, 117, 0.1);
+  border: 1px solid rgba(255, 118, 117, 0.2);
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.profile-view .error {
+  max-width: 320px;
+  margin: 0 auto 20px auto;
+}
+.badge {
+  background: #3b82f6;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  margin-left: 8px;
+  vertical-align: middle;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.totp-secret,
+.secret-text {
+  background: #1f2228;
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  border: 1px solid #2d313a;
+}
+.totp-secret {
+  padding: 6px 10px;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+.secret-text {
+  padding: 8px 12px;
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: #e0e0e0;
+}
+.btn-copy {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #a1a1aa;
+  padding: 0 6px;
+  transition: color 0.2s;
+  vertical-align: middle;
+}
+.btn-copy:hover {
+  color: #ffffff;
+}
+.ip-match {
+  font-family: ui-monospace, monospace;
+  color: #60a5fa;
+}
+#qrcode {
+  display: flex;
+  justify-content: center;
+  margin: 24px auto;
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  width: fit-content;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
