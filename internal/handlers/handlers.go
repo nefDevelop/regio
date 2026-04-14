@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -204,18 +206,65 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		events = append(events, e)
 	}
 
+	// 5. Generar sugerencias inteligentes basadas en lo configurado
+	hostSuggestions := make(map[string]bool)
+	targetSuggestions := make(map[string]bool)
+
+	Mu.Lock()
+	for host, target := range Config.Servicios {
+		hostSuggestions[host] = true
+		targetSuggestions[target] = true
+
+		// Sugerir el dominio base (ej: si hay app.vercel.com, sugerir .vercel.com)
+		parts := strings.Split(host, ".")
+		if len(parts) >= 2 {
+			baseDomain := strings.Join(parts[len(parts)-2:], ".")
+			hostSuggestions["."+baseDomain] = true
+		}
+
+		// Sugerir la base del target (ej: http://192.168.1.50:80 -> http://192.168.1.)
+		if strings.HasPrefix(target, "http") {
+			urlParts := strings.Split(target, "/")
+			if len(urlParts) >= 3 {
+				domainPart := urlParts[2] // el host:port
+				ipParts := strings.Split(domainPart, ".")
+				if len(ipParts) >= 3 {
+					targetSuggestions["http://"+strings.Join(ipParts[:3], ".")+".:"] = true
+				}
+				targetSuggestions["http://"+domainPart] = true
+			}
+		}
+	}
+	Mu.Unlock()
+
+	var hosts []string
+	for h := range hostSuggestions {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+
+	var targets []string
+	for t := range targetSuggestions {
+		targets = append(targets, t)
+	}
+	sort.Strings(targets)
+
 	data := struct {
-		Config    models.Config
-		Users     []models.User
-		CSRFToken string
-		BannedIPs []models.BannedIP
-		Events    []models.Event
+		Config            models.Config
+		Users             []models.User
+		CSRFToken         string
+		BannedIPs         []models.BannedIP
+		Events            []models.Event
+		HostSuggestions   []string
+		TargetSuggestions []string
 	}{
-		Config:    Config,
-		Users:     users,
-		CSRFToken: user.CSRFToken,
-		BannedIPs: bannedList,
-		Events:    events,
+		Config:            Config,
+		Users:             users,
+		CSRFToken:         user.CSRFToken,
+		BannedIPs:         bannedList,
+		Events:            events,
+		HostSuggestions:   hosts,
+		TargetSuggestions: targets,
 	}
 	Tmpls.ExecuteTemplate(w, "admin.html", data)
 }

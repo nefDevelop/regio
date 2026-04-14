@@ -74,17 +74,15 @@
         </form>
         
         <datalist id="domain-suggestions">
-          <option value="nas.local"></option>
-          <option value="proxy.server"></option>
-          <option value="cloud.home"></option>
-          <option value="rss.regio"></option>
+          {{range .HostSuggestions}}
+          <option value="{{.}}"></option>
+          {{end}}
         </datalist>
         
         <datalist id="target-suggestions">
-          <option value="http://localhost:"></option>
-          <option value="http://127.0.0.1:"></option>
-          <option value="http://192.168.1."></option>
-          <option value="https://"></option>
+          {{range .TargetSuggestions}}
+          <option value="{{.}}"></option>
+          {{end}}
         </datalist>
       </div>
     </div>
@@ -203,9 +201,12 @@
           <button type="submit" class="btn-del" style="margin: 0; padding: 14px 28px; background: var(--danger); color: white">Bloquear IP</button>
         </form>
         <datalist id="ip-suggestions">
-          <option value="192.168.1."></option>
-          <option value="10.0.0."></option>
-          <option value="172.16."></option>
+           {{range .TargetSuggestions}}
+           <option value="{{.}}"></option>
+           {{end}}
+           {{range .BannedIPs}}
+           <option value="{{.Target}}"></option>
+           {{end}}
         </datalist>
       </div>
     </div>

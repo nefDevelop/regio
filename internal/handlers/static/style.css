@@ -262,7 +262,8 @@ button,
   font-size: 16px;
   margin-top: 12px;
 }
-.admin-view .btn-add {
+.admin-view .btn-add,
+.profile-view .btn-add {
   padding: 14px 28px;
   border-radius: 14px;
   font-size: 14px;
@@ -271,7 +272,8 @@ button,
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
-.admin-view .btn-del {
+.admin-view .btn-del,
+.profile-view .btn-del {
   padding: 10px 18px;
   border-radius: 10px;
   font-size: 13px;
@@ -279,7 +281,8 @@ button,
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
-.admin-view .btn-del:hover {
+.admin-view .btn-del:hover,
+.profile-view .btn-del:hover {
   background: var(--danger);
   color: white;
   transform: translateY(-1px);
