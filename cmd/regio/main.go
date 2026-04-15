@@ -46,6 +46,9 @@ func main() {
 	configFile, err := os.ReadFile("./data/config.json")
 	if err == nil {
 		json.Unmarshal(configFile, &handlers.Config)
+		if handlers.Config.Servicios == nil {
+			handlers.Config.Servicios = make(map[string]string)
+		}
 		log.Printf("✅ Configuración cargada: %d servicios encontrados.", len(handlers.Config.Servicios))
 	} else {
 		log.Printf("⚠️ No se pudo cargar config.json: %v. Usando configuración vacía.", err)

@@ -190,6 +190,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				Mu.Lock()
+				if Config.Servicios == nil {
+					Config.Servicios = make(map[string]string)
+				}
 				Config.Servicios[host] = target
 				db.SaveConfig(Config)
 				Mu.Unlock()
@@ -206,6 +209,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				Mu.Lock()
+				if Config.Servicios == nil {
+					Config.Servicios = make(map[string]string)
+				}
 				delete(Config.Servicios, host)
 				Config.Servicios[newHost] = target
 				db.SaveConfig(Config)
