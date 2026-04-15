@@ -262,6 +262,11 @@ func main() {
 		r.URL.Scheme = remote.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = remote.Host
+
+		// Limpiar cabeceras de auth de ReGiO para que no confundan al backend (como Gogs/Gitea)
+		r.Header.Del("Authorization")
+		r.Header.Del("X-API-Key")
+
 		proxy.ServeHTTP(sw, r)
 	})
 
