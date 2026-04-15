@@ -6,78 +6,88 @@ Ofrece una capa de **autenticación centralizada**, **bloqueo automático de ata
 
 ---
 
-## Características
+## Características Principales
 
-- **Autenticación Multi-Usuario:** Sistema de inicio de sesión seguro basado en sesiones. Permite crear múltiples usuarios y gestionar sus accesos desde el panel de administrador.
-- **Soporte para 2FA (TOTP):** Los usuarios pueden activar la autenticación en dos pasos (compatible con Google Authenticator, Authy, etc.) para una capa extra de seguridad.
-- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs y rangos de red tras repetidos intentos de inicio de sesión fallidos. Detecta la IP real del atacante incluso detrás de Cloudflare.
-- **Panel de Administración Web:** Interfaz gráfica para gestionar puentes (redirecciones), usuarios, bloqueos de IP y visualizar un registro de eventos.
-- **Docker Ready:** Despliegue rápido y sencillo con Docker. Imagen ultra-ligera (< 15MB).
-- **Configuración Dinámica:** Los cambios en los puentes se guardan en `config.json` y se aplican al instante sin reinicios.
+- **Autenticación Multi-Usuario:** Sistema de inicio de sesión seguro basado en sesiones con soporte para múltiples usuarios y roles.
+- **Soporte para 2FA (TOTP):** Los usuarios pueden activar la autenticación en dos pasos para una capa extra de seguridad.
+- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs tras repetidos intentos fallidos. Detecta la IP real incluso detrás de proxies como Cloudflare.
+- **App Tokens Avanzados:** Genera tokens de acceso para aplicaciones, scripts o clientes Git.
+- **Soporte de Cabeceras Estándar:**
+  - `Authorization: Bearer <TOKEN>`
+  - `X-Regio-Token: <TOKEN>`
+  - `X-API-Key: <TOKEN>`
+- **Bypass Seguro por Cabecera:** Permite el acceso automático a un servicio si se presenta una cabecera secreta preconfigurada (ideal para webhooks o integraciones CI/CD).
+- **Panel de Administración Web:** Interfaz gráfica para gestionar servicios, usuarios, bloqueos de IP y registro de eventos en tiempo real.
+- **Docker Ready:** Imagen ultra-ligera (< 15MB) basada en Alpine Linux.
 
 ---
 
-## Instalación
-
-### Requisitos
-
-- Docker y Docker Compose instalados.
-- Un dominio o subdominio apuntando a tu servidor (ej: vía Cloudflare Tunnel).
-
-### Pasos
+## Instalación y Despliegue
 
 ```bash
 git clone https://github.com/nef734/regio.git
 cd regio
 
-# Configura el dominio que usarás para acceder al panel de administración
+# Configura tu dominio de administración en el .env
 cp .env.example .env
 nano .env
 
-# Crea un archivo de configuración vacío
-echo '{"servicios": {}}' > config.json
-
-# Despliega el contenedor
-docker-compose up -d --build
+# Despliega con Docker
+docker compose up -d --build
 ```
 
 ---
 
-## Ejemplo de Configuración (Cloudflare Tunnel)
+## Guía de Autenticación para Aplicaciones
 
-Para que reGiO funcione correctamente, debes configurar tus **Public Hostnames** en el panel de Cloudflare Zero Trust apuntando todos al mismo servicio local donde se ejecuta reGiO (por defecto, el puerto `80` del contenedor):
+reGiO ofrece flexibilidad total para que tus aplicaciones se conecten de forma segura sin pasar por el login visual.
 
-- `admin.tudominio.com` -> `http://localhost:80` (Panel Admin, según tu `ADMIN_DOMAIN`)
-- `nas.tudominio.com` -> `http://localhost:80` (Tu NAS)
-- `app.tudominio.com` -> `http://localhost:80` (Otra App)
+### 1. Uso con Git (Recomendado)
+Para evitar tokens en la URL y mantener la compatibilidad con las credenciales de tu servidor Git (Gogs/Gitea), configura Git para enviar el token de reGiO en una cabecera:
+
+```bash
+git config http.extraHeader "X-Regio-Token: TU_TOKEN_DE_REGIO"
+```
+Esto permite que `git push/pull` funcione con la URL limpia: `http://vit.734038.xyz/user/repo.git`.
+
+### 2. Uso con APIs y Scripts
+Puedes usar el estándar Bearer o cabeceras personalizadas:
+
+```bash
+# Usando Bearer (Estándar API)
+curl -H "Authorization: Bearer TU_TOKEN" http://api.tudominio.com/data
+
+# Usando X-Regio-Token
+curl -H "X-Regio-Token: TU_TOKEN" http://api.tudominio.com/data
+```
+
+### 3. Acceso vía Path (Rápido)
+Si no puedes configurar cabeceras, usa el token directamente en la dirección:
+`http://app.tudominio.com/r-auth/TU_TOKEN/ruta/destino`
 
 ---
 
-## Uso y Primeros Pasos
+## Configuración de Bypass Seguro (Avanzado)
 
-1.  **Primer Inicio (Instalación):** Al acceder por primera vez a cualquier dominio gestionado por reGiO, serás redirigido a una página de instalación para crear tu cuenta de administrador principal.
-2.  **Inicio de Sesión:** Una vez configurado, accede al panel de administración en la URL definida en tu variable `ADMIN_DOMAIN` (ej: `https://admin.tudominio.com/admin`).
-3.  **Gestión de Puentes:** En el panel, puedes añadir un dominio público (ej: `nas.tudominio.com`) y su destino local correspondiente.
-    - **Importante sobre el "Destino Local":** Como reGiO se ejecuta en Docker, `localhost` significa "el interior del propio contenedor". En su lugar, usa:
-      - **Si el servicio es otro contenedor (misma red Docker):** Usa el nombre del contenedor (ej: `http://nextcloud:80` o `http://plex:32400`).
-      - **Si el servicio está en tu servidor (host) u otro equipo local:** Usa la IP local de tu red (ej: `http://192.168.1.50:8080`).
-4.  **Gestión de Usuarios:** El administrador puede crear nuevos usuarios. Los usuarios nuevos sin contraseña asignada podrán crearla en su primer inicio de sesión.
-5.  **Perfil de Usuario:** Cada usuario puede acceder a su perfil para cambiar su nombre/contraseña y activar/desactivar el 2FA.
+En lugar de hacer un servicio totalmente "público", puedes definir una "llave de paso" en `config.json`. Solo las peticiones que incluyan esa cabecera exacta podrán saltar la autenticación de reGiO:
+
+```json
+{
+  "servicios": {
+    "webhook.tudominio.com": "http://192.168.1.50:9000"
+  },
+  "bypass_headers": {
+    "webhook.tudominio.com": "X-My-Secret:SuperClave123"
+  }
+}
+```
 
 ---
 
-## Seguridad y Privacidad
-
-- **Variables de Entorno:** La configuración sensible (como el dominio de administración) se gestiona fuera del código.
-- **No-Root:** El contenedor está diseñado para ser ejecutado con privilegios mínimos (opcional según configuración).
-- **Aislamiento:** Tus aplicaciones reales no necesitan estar expuestas al exterior; reGiO actúa como el único punto de entrada.
+## Seguridad y Limpieza
+reGiO es inteligente: una vez que valida tu token (ya sea por Path, Query o Header), **elimina esas cabeceras y parámetros** antes de pasar la petición al servicio final. Esto evita que tus tokens se filtren a los backends y previene conflictos con sus propios sistemas de autenticación.
 
 ---
 
 ## Licencia
-
-Este proyecto está bajo la Licencia MIT. Siéntete libre de usarlo, modificarlo y compartirlo.
-
----
-
-_Hecho para la comunidad Self-Hosted._
+MIT License. Hecho para la comunidad Self-Hosted.

@@ -6,7 +6,9 @@ import (
 )
 
 type Config struct {
-	Servicios map[string]string `json:"servicios"`
+	Servicios     map[string]string `json:"servicios"`
+	Publicos      map[string]bool   `json:"publicos"`
+	BypassHeaders map[string]string `json:"bypass_headers"` // Host -> "HeaderName:Value"
 }
 
 type Intento struct {

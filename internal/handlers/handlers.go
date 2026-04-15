@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strings"
@@ -640,6 +641,10 @@ func isValidTarget(target string) error {
 	return nil
 }
 
+func LogEvent(message string, performer string) {
+	db.LogEvent(message, performer)
+}
+
 func UpdateSessionActivity(token string) {
 	Mu.Lock()
 	user, ok := ActiveSessions[token]
@@ -651,6 +656,254 @@ func UpdateSessionActivity(token string) {
 	if ok {
 		db.DB.Exec("UPDATE sessions SET last_active = ? WHERE token = ?", time.Now(), token)
 	}
+}
+
+// MainHandler es el corazón de reGiO, gestiona la seguridad y el proxy
+func MainHandler(w http.ResponseWriter, r *http.Request) {
+	// Wrapper para capturar el estado HTTP
+	type statusWriter struct {
+		http.ResponseWriter
+		status int
+	}
+	sw := &statusWriter{ResponseWriter: w, status: 200}
+
+	// Obtener IP real del cliente
+	ip := r.Header.Get("CF-Connecting-IP")
+	if ip == "" {
+		var err error
+		if ip, _, err = net.SplitHostPort(r.RemoteAddr); err != nil {
+			ip = r.RemoteAddr
+		}
+	}
+
+	// Al final de la función, logueamos el resultado
+	defer func() {
+		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.Path, ip, r.Host), "Sistema")
+	}()
+
+	// Cabeceras de seguridad globales
+	sw.Header().Set("X-Content-Type-Options", "nosniff")
+	sw.Header().Set("X-Frame-Options", "DENY")
+	sw.Header().Set("X-XSS-Protection", "1; mode=block")
+	sw.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+	// 0. RATE LIMITING GLOBAL (Límite: 100 peticiones / minuto)
+	if !CheckRateLimit(ip) {
+		sw.status = http.StatusTooManyRequests
+		http.Error(sw, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
+		return
+	}
+
+	// 0. Servir archivos estáticos
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		ServeStatic(sw, r)
+		return
+	}
+
+	// 1. Verificar bloqueo por IP (Fail2Ban)
+	blocked, _ := IsIPBlocked(ip)
+	if blocked {
+		sw.status = http.StatusForbidden
+		http.Error(sw, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
+		return
+	}
+
+	// 2. Modo Instalación (Setup)
+	Mu.Lock()
+	isSetup := NeedsSetup
+	Mu.Unlock()
+
+	if isSetup {
+		if r.URL.Path == "/setup" {
+			HandleSetup(sw, r)
+			return
+		}
+		sw.status = http.StatusTemporaryRedirect
+		http.Redirect(sw, r, "/setup", http.StatusTemporaryRedirect)
+		return
+	}
+
+	// 3. Ruta de Login
+	if r.URL.Path == "/REGIO-login" {
+		HandleLogin(sw, r, ip)
+		return
+	}
+
+	// 4. Identificación y Autenticación
+	var user *models.User
+	var validSession bool
+	var tokenUsed string
+
+	// A. Verificar Token en el PATH (Formato: /r-auth/TOKEN/...)
+	if strings.HasPrefix(r.URL.Path, "/r-auth/") {
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 3)
+		if len(parts) >= 2 {
+			u, tName, ok := auth.VerifyAppToken(parts[1])
+			if ok {
+				user = u
+				validSession = true
+				tokenUsed = tName
+				newPath := "/"
+				if len(parts) > 2 {
+					newPath += parts[2]
+				}
+				r.URL.Path = newPath
+			}
+		}
+	}
+
+	// B. Verificar Sesión por Cookie de Navegador
+	if !validSession {
+		cookie, err := r.Cookie(SessionKey)
+		if err == nil {
+			Mu.Lock()
+			user, validSession = ActiveSessions[cookie.Value]
+			Mu.Unlock()
+			if validSession {
+				UpdateSessionActivity(cookie.Value)
+			}
+		}
+	}
+
+	// C. Verificar Token en Query Params (api_key)
+	if !validSession {
+		if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
+			u, tName, ok := auth.VerifyAppToken(apiKey)
+			if ok {
+				user = u
+				tokenUsed = tName
+				validSession = true
+				// Limpiar el token de la URL para que no llegue al backend
+				q := r.URL.Query()
+				q.Del("api_key")
+				r.URL.RawQuery = q.Encode()
+			}
+		}
+	}
+
+	// D. Verificar Token en Headers (X-API-Key, X-Regio-Token, Authorization: Bearer o Basic Auth)
+	if !validSession {
+		// Cabeceras personalizadas
+		if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
+		}
+		if !validSession {
+			if regToken := r.Header.Get("X-Regio-Token"); regToken != "" {
+				user, tokenUsed, validSession = auth.VerifyAppToken(regToken)
+			}
+		}
+		// Cabecera estándar Bearer
+		if !validSession {
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				token := strings.TrimPrefix(authHeader, "Bearer ")
+				user, tokenUsed, validSession = auth.VerifyAppToken(token)
+			}
+		}
+		// Basic Auth (Git compatible)
+		if !validSession {
+			reqUser, reqPass, ok := r.BasicAuth()
+			if ok {
+				user, tokenUsed, validSession = auth.VerifyAppToken(reqPass)
+				if !validSession {
+					user, tokenUsed, validSession = auth.VerifyAppToken(reqUser)
+				}
+			}
+		}
+	}
+
+	// E. Fallback: Servicio Público o Bypass Seguro por Cabecera
+	if !validSession && r.Host != AdminDomain {
+		// 1. Bypass Seguro (Header:Value)
+		if bypass, ok := Config.BypassHeaders[r.Host]; ok && bypass != "" {
+			parts := strings.SplitN(bypass, ":", 2)
+			if len(parts) == 2 {
+				headerName := strings.TrimSpace(parts[0])
+				expectedValue := strings.TrimSpace(parts[1])
+				if r.Header.Get(headerName) == expectedValue {
+					validSession = true
+					user = &models.User{Username: "bypass-header", IsAdmin: false}
+					tokenUsed = "bypass-" + headerName
+				}
+			}
+		}
+		// 2. Público (Legacy/Inseguro)
+		if !validSession && Config.Publicos[r.Host] {
+			validSession = true
+			user = &models.User{Username: "public", IsAdmin: false}
+		}
+	}
+
+	// F. Denegar acceso si no hay nada válido
+	if !validSession {
+		if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+			sw.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
+			sw.status = http.StatusUnauthorized
+			http.Error(sw, "No autorizado", http.StatusUnauthorized)
+			return
+		}
+		sw.status = http.StatusSeeOther
+		http.Redirect(sw, r, "/REGIO-login", http.StatusSeeOther)
+		return
+	}
+
+	// Ruta de Logout
+	if r.URL.Path == "/logout" {
+		cookie, err := r.Cookie(SessionKey)
+		Mu.Lock()
+		if err == nil {
+			delete(ActiveSessions, cookie.Value)
+		}
+		Mu.Unlock()
+		http.SetCookie(sw, &http.Cookie{Name: SessionKey, Value: "", Path: "/", MaxAge: -1})
+		sw.status = http.StatusSeeOther
+		http.Redirect(sw, r, "/REGIO-login", http.StatusSeeOther)
+		return
+	}
+
+	// 5. Rutas internas (Admin y Perfil)
+	if r.Host == AdminDomain {
+		if r.URL.Path == "/profile" {
+			HandleProfile(sw, r)
+			return
+		}
+		if r.URL.Path == "/admin" || r.URL.Path == "/" {
+			if !user.IsAdmin {
+				sw.status = http.StatusSeeOther
+				http.Redirect(sw, r, "/profile", http.StatusSeeOther)
+				return
+			}
+			if r.URL.Path == "/" {
+				sw.status = http.StatusSeeOther
+				http.Redirect(sw, r, "/admin", http.StatusSeeOther)
+				return
+			}
+			HandleAdmin(sw, r)
+			return
+		}
+	}
+
+	// 6. Proxy Inverso
+	target, ok := Config.Servicios[r.Host]
+	if !ok {
+		sw.status = http.StatusNotFound
+		http.Error(sw, "Dominio no configurado en ReGiO: "+r.Host, http.StatusNotFound)
+		return
+	}
+
+	remote, _ := url.Parse(target)
+	proxy := httputil.NewSingleHostReverseProxy(remote)
+	r.URL.Host = remote.Host
+	r.URL.Scheme = remote.Scheme
+	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
+	r.Host = remote.Host
+
+	if tokenUsed != "" {
+		r.Header.Del("Authorization")
+	}
+	r.Header.Del("X-API-Key")
+
+	proxy.ServeHTTP(sw, r)
 }
 
 func CleanupSessions() {
