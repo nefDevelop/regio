@@ -17,6 +17,17 @@ import (
 	"regio/internal/models"
 )
 
+// statusWriter es un wrapper para capturar el código de estado HTTP
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
 func main() {
 	log.Println("🚀 Iniciando ReGiO...")
 	
@@ -45,7 +56,10 @@ func main() {
 	log.Println("ℹ️ Cargando configuración de servicios...")
 	configFile, err := os.ReadFile("./data/config.json")
 	if err == nil {
-		json.Unmarshal(configFile, &handlers.Config)
+		err = json.Unmarshal(configFile, &handlers.Config)
+		if err != nil {
+			log.Printf("✕ ERROR: No se pudo procesar el JSON de config.json: %v", err)
+		}
 		if handlers.Config.Servicios == nil {
 			handlers.Config.Servicios = make(map[string]string)
 		}
@@ -73,14 +87,8 @@ func main() {
 
 	// Router Principal
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("📥 [%s] %s %s (Host: %s)", r.Method, r.URL.Path, r.RemoteAddr, r.Host)
-
-		// Cabeceras de seguridad globales
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-
+		sw := &statusWriter{ResponseWriter: w, status: 200}
+		
 		// Obtener IP real del cliente
 		ip := r.Header.Get("CF-Connecting-IP")
 		if ip == "" {
@@ -90,27 +98,37 @@ func main() {
 			}
 		}
 
+		// Al final de la función, logueamos el resultado
+		defer func() {
+			log.Printf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.Path, ip, r.Host)
+		}()
+
+		// Cabeceras de seguridad globales
+		sw.Header().Set("X-Content-Type-Options", "nosniff")
+		sw.Header().Set("X-Frame-Options", "DENY")
+		sw.Header().Set("X-XSS-Protection", "1; mode=block")
+		sw.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
 		// 0. RATE LIMITING GLOBAL (Límite: 100 peticiones / minuto)
-		log.Printf("⏱️ Verificando rate limit para %s", ip)
 		if !handlers.CheckRateLimit(ip) {
 			log.Printf("⚠️ Rate limit excedido para %s", ip)
-			http.Error(w, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
+			sw.status = http.StatusTooManyRequests
+			http.Error(sw, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
 			return
 		}
 
 		// 0. Servir archivos estáticos desde el sistema de archivos embebido
 		if strings.HasPrefix(r.URL.Path, "/static/") {
-			log.Printf("📁 Sirviendo estático: %s", r.URL.Path)
-			handlers.ServeStatic(w, r)
+			handlers.ServeStatic(sw, r)
 			return
 		}
 
 		// 1. Verificar bloqueo por IP (Fail2Ban)
-		log.Printf("🔒 Verificando bloqueo de IP: %s", ip)
 		blocked, _ := handlers.IsIPBlocked(ip)
 		if blocked {
 			log.Printf("🚫 IP Bloqueada: %s", ip)
-			http.Error(w, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
+			sw.status = http.StatusForbidden
+			http.Error(sw, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
 			return
 		}
 
@@ -120,20 +138,18 @@ func main() {
 		handlers.Mu.Unlock()
 
 		if isSetup {
-			log.Println("🛠 Modo Setup activo")
 			if r.URL.Path == "/setup" {
-				handlers.HandleSetup(w, r)
+				handlers.HandleSetup(sw, r)
 				return
 			}
-			log.Println("↪️ Redirigiendo a /setup")
-			http.Redirect(w, r, "/setup", http.StatusTemporaryRedirect)
+			sw.status = http.StatusTemporaryRedirect
+			http.Redirect(sw, r, "/setup", http.StatusTemporaryRedirect)
 			return
 		}
 
 		// 3. Ruta de Login
 		if r.URL.Path == "/REGIO-login" {
-			log.Println("🔑 Accediendo a HandleLogin")
-			handlers.HandleLogin(w, r, ip)
+			handlers.HandleLogin(sw, r, ip)
 			return
 		}
 
@@ -170,20 +186,19 @@ func main() {
 				_ = tokenUsed
 				// Si no es un navegador, pedimos Basic Auth (con App Token)
 				if !strings.Contains(r.Header.Get("Accept"), "text/html") {
-					log.Println("🛑 No autorizado (API/Basic)")
-					w.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
-					http.Error(w, "No autorizado", http.StatusUnauthorized)
+					sw.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
+					sw.status = http.StatusUnauthorized
+					http.Error(sw, "No autorizado", http.StatusUnauthorized)
 					return
 				}
 				// Si es un navegador, enviamos a login
-				log.Println("↪️ Redirigiendo a /REGIO-login (Sesión no válida)")
-				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+				sw.status = http.StatusSeeOther
+				http.Redirect(sw, r, "/REGIO-login", http.StatusSeeOther)
 				return
 			}
 			log.Printf("👤 Sesión válida vía Token para: %s (Token: %s)", user.Username, tokenUsed)
 		} else {
-			log.Printf("👤 Sesión válida vía Cookie para: %s", user.Username)
-                        handlers.UpdateSessionActivity(cookie.Value)
+			handlers.UpdateSessionActivity(cookie.Value)
 		}
 
 		// Ruta de Logout
@@ -193,27 +208,30 @@ func main() {
 				delete(handlers.ActiveSessions, cookie.Value)
 			}
 			handlers.Mu.Unlock()
-			http.SetCookie(w, &http.Cookie{Name: handlers.SessionKey, Value: "", Path: "/", MaxAge: -1})
-			http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+			http.SetCookie(sw, &http.Cookie{Name: handlers.SessionKey, Value: "", Path: "/", MaxAge: -1})
+			sw.status = http.StatusSeeOther
+			http.Redirect(sw, r, "/REGIO-login", http.StatusSeeOther)
 			return
 		}
 
 		// 5. Rutas internas (Admin y Perfil)
 		if r.Host == handlers.AdminDomain {
 			if r.URL.Path == "/profile" {
-				handlers.HandleProfile(w, r)
+				handlers.HandleProfile(sw, r)
 				return
 			}
 			if r.URL.Path == "/admin" || r.URL.Path == "/" {
 				if !user.IsAdmin {
-					http.Redirect(w, r, "/profile", http.StatusSeeOther)
+					sw.status = http.StatusSeeOther
+					http.Redirect(sw, r, "/profile", http.StatusSeeOther)
 					return
 				}
 				if r.URL.Path == "/" {
-					http.Redirect(w, r, "/admin", http.StatusSeeOther)
+					sw.status = http.StatusSeeOther
+					http.Redirect(sw, r, "/admin", http.StatusSeeOther)
 					return
 				}
-				handlers.HandleAdmin(w, r)
+				handlers.HandleAdmin(sw, r)
 				return
 			}
 		}
@@ -221,7 +239,8 @@ func main() {
 		// 6. Proxy Inverso a servicios configurados
 		target, ok := handlers.Config.Servicios[r.Host]
 		if !ok {
-			http.Error(w, "Dominio no configurado en ReGiO: "+r.Host, http.StatusNotFound)
+			sw.status = http.StatusNotFound
+			http.Error(sw, "Dominio no configurado en ReGiO: "+r.Host, http.StatusNotFound)
 			return
 		}
 
@@ -231,7 +250,7 @@ func main() {
 		r.URL.Scheme = remote.Scheme
 		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 		r.Host = remote.Host
-		proxy.ServeHTTP(w, r)
+		proxy.ServeHTTP(sw, r)
 	})
 
 	log.Printf("⎈ REGIO Blindado Iniciado. Admin en: https://%s/admin. Escuchando en :80", handlers.AdminDomain)
