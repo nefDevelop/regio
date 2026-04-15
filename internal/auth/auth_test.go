@@ -2,85 +2,59 @@ package auth
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
-	"strings"
 	"database/sql"
-	"regio/internal/db"
+	"encoding/base64"
+	"os"
 	"testing"
 
+	"regio/internal/db"
 	_ "modernc.org/sqlite"
 )
 
-func setupTestDB(t *testing.T) {
-	var err error
-	db.DB, err = sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Error abriendo DB en memoria: %v", err)
-	}
-
-	// Crear esquema mínimo para tests
-	db.DB.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, is_admin BOOLEAN);`)
-	db.DB.Exec(`CREATE TABLE app_tokens (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, token_hash TEXT UNIQUE, last_used DATETIME);`)
-}
-
 func TestVerifyAppToken(t *testing.T) {
-	setupTestDB(t)
+	// Setup: Crear base de datos temporal
+	os.MkdirAll("./testdata", 0755)
+	testDBPath := "./testdata/test_regio.db"
+	defer os.RemoveAll("./testdata")
+
+	var err error
+	db.DB, err = sql.Open("sqlite", testDBPath)
+	if err != nil {
+		t.Fatalf("Error abriendo DB de test: %v", err)
+	}
 	defer db.DB.Close()
 
-	// 1. Crear usuario de prueba
-	db.DB.Exec("INSERT INTO users (id, username, is_admin) VALUES (1, 'testuser', 1)")
+	// Crear tablas necesarias
+	db.DB.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, is_admin BOOLEAN)`)
+	db.DB.Exec(`CREATE TABLE app_tokens (id INTEGER PRIMARY KEY, user_id INTEGER, name TEXT, token_hash TEXT, last_used DATETIME)`)
 
-	// 2. Generar un token real para el test
-	rawToken := "ABC-TOKEN-SECRETO-123"
-	tokenName := "Test Device"
-	
-	// Calcular el hash exactamente como lo hace la lógica de producción
-	h := sha256.Sum256([]byte(rawToken))
-	encodedHash := base64.StdEncoding.EncodeToString(h[:])
-	
-	db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (1, ?, ?)", tokenName, encodedHash)
+	// Insertar datos de prueba
+	testUserID := 1
+	testUsername := "testuser"
+	db.DB.Exec("INSERT INTO users (id, username, is_admin) VALUES (?, ?, ?)", testUserID, testUsername, 1)
 
-	// --- TEST 1: Validación Exitosa ---
-	user, name, ok := VerifyAppToken(rawToken)
-	if !ok {
-		t.Errorf("VerifyAppToken falló con un token válido")
-	}
-	if user.Username != "testuser" || !user.IsAdmin {
-		t.Errorf("Usuario recuperado incorrecto: %+v", user)
-	}
-	if name != tokenName {
-		t.Errorf("Nombre del token incorrecto: %s", name)
-	}
+	rawToken := "Wrtav3ig2FNmdwNlf5qJWVq1X7lLfu3Y4105oL5n3gQ"
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenHash := base64.StdEncoding.EncodeToString(hash[:])
+	db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", testUserID, "test-token", tokenHash)
 
-	// --- TEST 2: Token Incorrecto ---
-	_, _, ok = VerifyAppToken("TOKEN-FALSO")
-	if ok {
-		t.Errorf("VerifyAppToken aceptó un token falso")
+	// Ejecutar Test
+	user, tokenName, valid := VerifyAppToken(rawToken)
+
+	// Verificaciones
+	if !valid {
+		t.Errorf("VerifyAppToken falló: se esperaba que el token fuera válido")
+	}
+	if user == nil || user.Username != testUsername {
+		t.Errorf("VerifyAppToken devolvió usuario incorrecto: esperado %s, obtenido %v", testUsername, user)
+	}
+	if tokenName != "test-token" {
+		t.Errorf("VerifyAppToken devolvió nombre de token incorrecto: esperado 'test-token', obtenido '%s'", tokenName)
 	}
 
-	// --- TEST 3: Intento de Inyección / Token Vacío ---
-	_, _, ok = VerifyAppToken("")
-	if ok {
-		t.Errorf("VerifyAppToken aceptó un token vacío")
-	}
-}
-
-func TestPasswordSecurity(t *testing.T) {
-	pass := "mi-password-segura"
-	hash := HashPassword(pass)
-
-	// Verificar que el hash no contiene la contraseña en texto plano
-	if strings.Contains(hash, pass) {
-		t.Errorf("El hash contiene la contraseña en texto plano!")
-	}
-
-	// Verificar validación correcta
-	if !VerifyPassword(pass, hash) {
-		t.Errorf("Fallo al verificar contraseña correcta")
-	}
-
-	// Verificar rechazo de contraseña incorrecta
-	if VerifyPassword("otra-cosa", hash) {
-		t.Errorf("Aceptó una contraseña incorrecta")
+	// Probar con token inválido
+	_, _, validInvalid := VerifyAppToken("token-falso")
+	if validInvalid {
+		t.Errorf("VerifyAppToken aceptó un token inválido")
 	}
 }

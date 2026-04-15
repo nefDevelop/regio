@@ -167,6 +167,15 @@ func main() {
 		// Si no hay sesión de navegador, intentamos API/App Tokens
 		if !validSession {
 			var tokenUsed string
+			
+			// DEBUG LOGS para servidor
+			qKey := r.URL.Query().Get("api_key")
+			xKey := r.Header.Get("X-API-Key")
+			_, _, hasBasic := r.BasicAuth()
+			if qKey != "" || xKey != "" || hasBasic {
+				log.Printf("🔍 Intento de auth detectado: api_key query=%v, X-API-Key header=%v, BasicAuth=%v", qKey != "", xKey != "", hasBasic)
+			}
+
 			if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
 				user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
 			}
@@ -183,6 +192,9 @@ func main() {
 			}
 
 			if !validSession {
+				if qKey != "" || xKey != "" || hasBasic {
+					log.Printf("❌ Auth fallida para los métodos detectados")
+				}
 				_ = tokenUsed
 				// Si no es un navegador, pedimos Basic Auth (con App Token)
 				if !strings.Contains(r.Header.Get("Accept"), "text/html") {
