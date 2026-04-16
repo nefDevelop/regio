@@ -13,7 +13,7 @@ import (
 
 func main() {
 	log.Println("🚀 Iniciando ReGiO...")
-	
+
 	handlers.AdminDomain = os.Getenv("ADMIN_DOMAIN")
 	if handlers.AdminDomain == "" {
 		log.Println("✕ ERROR: Configura la variable de entorno ADMIN_DOMAIN")
@@ -25,14 +25,14 @@ func main() {
 	log.Println("ℹ️ Inicializando Base de Datos...")
 	db.InitDB()
 	log.Println("✅ Base de Datos inicializada.")
-	
+
 	// 2. Comprobar si necesita instalación inicial
 	handlers.NeedsSetup = db.CheckNeedsSetup()
 	log.Printf("ℹ️ Necesita instalación (Setup): %v", handlers.NeedsSetup)
-	
+
 	// 3. Inicializar plantillas y recursos internos
 	log.Println("ℹ️ Inicializando plantillas y recursos...")
-	handlers.Init() 
+	handlers.Init()
 	log.Println("✅ Recursos inicializados.")
 
 	// 4. Cargar configuración de servicios
@@ -77,19 +77,17 @@ func main() {
 	}()
 
 	// Router Principal
-	http.HandleFunc("/", handlers.MainHandler)
-
 	log.Printf("⎈ REGIO Blindado Iniciado. Admin en: https://%s/admin. Escuchando en :80", handlers.AdminDomain)
-	
+
 	// Configuración del servidor con timeouts para evitar DoS
 	server := &http.Server{
 		Addr:         ":80",
-		Handler:      nil,
+		Handler:      http.HandlerFunc(handlers.MainHandler),
 		ReadTimeout:  120 * time.Second,
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  300 * time.Second,
 	}
-	
+
 	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("✕ ERROR FATAL al iniciar el servidor: %v", err)

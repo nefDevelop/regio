@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	
 
 	"regio/internal/auth"
 	"regio/internal/db"
@@ -55,7 +54,7 @@ var (
 
 func Init() {
 	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
-	
+
 	// Cargar proxies de confianza desde el entorno
 	proxies := os.Getenv("TRUSTED_PROXIES")
 	if proxies != "" {
@@ -116,7 +115,7 @@ func LoadSessions() {
 		var isAdmin, totpActive bool
 		var lastActive time.Time
 		rows.Scan(&token, &userID, &csrf, &username, &isAdmin, &totpActive, &ip, &lastActive)
-		
+
 		// Si por alguna razón la sesión vieja no tiene CSRF (migración), generamos uno
 		if csrf == "" {
 			csrf = auth.GenerateSessionToken()
@@ -330,7 +329,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				totpEnc, _ := auth.Encrypt(totp)
 				inviteToken := auth.GenerateSessionToken() // Usamos la misma función para el token de invitación
 				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, invite_token, is_admin, totp_active) VALUES (?, '', ?, ?, 0, 0)", newUser, totpEnc, inviteToken)
-				
+
 				inviteURL := fmt.Sprintf("https://%s/REGIO-login?invite=%s", AdminDomain, inviteToken)
 				db.LogEvent(fmt.Sprintf("⚇ Usuario creado: %s. URL de invitación: %s", newUser, inviteURL), user.Username)
 			}
@@ -422,11 +421,15 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	Mu.Unlock()
 
 	var hosts []string
-	for h := range hostSuggestions { hosts = append(hosts, h) }
+	for h := range hostSuggestions {
+		hosts = append(hosts, h)
+	}
 	sort.Strings(hosts)
 
 	var targets []string
-	for t := range targetSuggestions { targets = append(targets, t) }
+	for t := range targetSuggestions {
+		targets = append(targets, t)
+	}
 	sort.Strings(targets)
 
 	type ServiceStatus struct {
@@ -558,7 +561,9 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				db.LogEvent(fmt.Sprintf("⚿ 2FA activado por el usuario: %s", u.Username), u.Username)
 				http.Redirect(w, r, "/profile", http.StatusSeeOther)
 				return
-			} else { errorMsg = true }
+			} else {
+				errorMsg = true
+			}
 		} else if accion == "disable_2fa" {
 			db.DB.Exec("UPDATE users SET totp_active = 0 WHERE id = ?", u.ID)
 			db.LogEvent(fmt.Sprintf("⊘ 2FA desactivado por el usuario: %s", u.Username), u.Username)
@@ -654,8 +659,9 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 		pass := r.FormValue("pass")
 		if user != "" && pass != "" {
 			hash := auth.HashPassword(pass)
-			secret := auth.GenerateTOTPSecret()
-			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, secret)
+			rawSecret := auth.GenerateTOTPSecret()
+			encryptedSecret, _ := auth.Encrypt(rawSecret)
+			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, encryptedSecret)
 			if err == nil {
 				db.LogEvent("✓ Instalación completada. Administrador original creado.", "Sistema")
 				Mu.Lock()
@@ -670,30 +676,48 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func checkServiceHealth(target string) bool {
-	client := http.Client{ Timeout: 2 * time.Second }
+	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(target)
-	if err != nil { return false }
+	if err != nil {
+		return false
+	}
 	defer resp.Body.Close()
 	return resp.StatusCode < 500
 }
 
 func RelTime(t time.Time) string {
-	if t.IsZero() { return "Nunca" }
+	if t.IsZero() {
+		return "Nunca"
+	}
 	diff := time.Since(t)
-	if diff < time.Minute { return "hace unos segundos" }
-	if diff < time.Hour { return fmt.Sprintf("hace %d min", int(diff.Minutes())) }
-	if diff < 24*time.Hour { return fmt.Sprintf("hace %d horas", int(diff.Hours())) }
+	if diff < time.Minute {
+		return "hace unos segundos"
+	}
+	if diff < time.Hour {
+		return fmt.Sprintf("hace %d min", int(diff.Minutes()))
+	}
+	if diff < 24*time.Hour {
+		return fmt.Sprintf("hace %d horas", int(diff.Hours()))
+	}
 	return t.Format("02/01/2006")
 }
 
 func isValidTarget(target string) error {
 	u, err := url.Parse(target)
-	if err != nil { return fmt.Errorf("URL inválida") }
-	if u.Scheme != "http" && u.Scheme != "https" { return fmt.Errorf("solo se permite http o https") }
-	if u.Host == "" { return fmt.Errorf("host no especificado") }
+	if err != nil {
+		return fmt.Errorf("URL inválida")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("solo se permite http o https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("host no especificado")
+	}
 
 	host, _, err := net.SplitHostPort(u.Host)
-	if err != nil { host = u.Host }
+	if err != nil {
+		host = u.Host
+	}
 
 	// Bloquear loopback
 	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
@@ -741,7 +765,9 @@ func LogEvent(message string, performer string) {
 func UpdateSessionActivity(token string) {
 	Mu.Lock()
 	user, ok := ActiveSessions[token]
-	if ok { user.LastActive = time.Now() }
+	if ok {
+		user.LastActive = time.Now()
+	}
 	Mu.Unlock()
 	if ok {
 		db.DB.Exec("UPDATE sessions SET last_active = ? WHERE token = ?", time.Now(), token)
@@ -754,9 +780,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		status int
 	}
 	sw := &statusWriter{ResponseWriter: w, status: 200}
-	
+
 	ip := getRealIP(r)
-	
+
 	defer func() {
 		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.Path, ip, r.Host), "Sistema")
 	}()
@@ -785,12 +811,18 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	isSetup := NeedsSetup
 	Mu.Unlock()
 	if isSetup {
-		if r.URL.Path == "/setup" { HandleSetup(sw, r); return }
+		if r.URL.Path == "/setup" {
+			HandleSetup(sw, r)
+			return
+		}
 		sw.status = http.StatusTemporaryRedirect
 		http.Redirect(sw, r, "/setup", http.StatusTemporaryRedirect)
 		return
 	}
-	if r.URL.Path == "/REGIO-login" { HandleLogin(sw, r, ip); return }
+	if r.URL.Path == "/REGIO-login" {
+		HandleLogin(sw, r, ip)
+		return
+	}
 
 	var user *models.User
 	var validSession bool
@@ -801,7 +833,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		Mu.Lock()
 		user, validSession = ActiveSessions[cookie.Value]
 		Mu.Unlock()
-		if validSession { UpdateSessionActivity(cookie.Value) }
+		if validSession {
+			UpdateSessionActivity(cookie.Value)
+		}
 	}
 
 	if !validSession {
@@ -812,7 +846,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 			reqUser, reqPass, ok := r.BasicAuth()
 			if ok {
 				user, tokenUsed, validSession = auth.VerifyAppToken(reqPass)
-				if !validSession { user, tokenUsed, validSession = auth.VerifyAppToken(reqUser) }
+				if !validSession {
+					user, tokenUsed, validSession = auth.VerifyAppToken(reqUser)
+				}
 			}
 		}
 	}
@@ -849,7 +885,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/logout" {
 		cookie, err := r.Cookie(SessionKey)
 		Mu.Lock()
-		if err == nil { delete(ActiveSessions, cookie.Value) }
+		if err == nil {
+			delete(ActiveSessions, cookie.Value)
+		}
 		Mu.Unlock()
 		http.SetCookie(sw, &http.Cookie{Name: SessionKey, Value: "", Path: "/", MaxAge: -1})
 		sw.status = http.StatusSeeOther
@@ -858,7 +896,10 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Host == AdminDomain {
-		if r.URL.Path == "/profile" { HandleProfile(sw, r); return }
+		if r.URL.Path == "/profile" {
+			HandleProfile(sw, r)
+			return
+		}
 		if r.URL.Path == "/admin" || r.URL.Path == "/" {
 			if !user.IsAdmin {
 				sw.status = http.StatusSeeOther
@@ -889,7 +930,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
 	r.Host = remote.Host
 
-	if tokenUsed != "" { r.Header.Del("Authorization") }
+	if tokenUsed != "" {
+		r.Header.Del("Authorization")
+	}
 	r.Header.Del("X-API-Key")
 	proxy.ServeHTTP(sw, r)
 }
@@ -899,7 +942,9 @@ func CleanupSessions() {
 	defer Mu.Unlock()
 	limite := time.Now().Add(-7 * 24 * time.Hour)
 	for token, user := range ActiveSessions {
-		if user.LastActive.Before(limite) { delete(ActiveSessions, token) }
+		if user.LastActive.Before(limite) {
+			delete(ActiveSessions, token)
+		}
 	}
 	db.DB.Exec("DELETE FROM sessions WHERE last_active < ?", limite)
 }
