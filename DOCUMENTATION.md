@@ -1,6 +1,6 @@
 # Documentación Técnica de ReGiO (Reverse Gateway for Internal Operations)
 
-ReGiO es un proxy inverso blindado diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación de ataques.
+ReGiO es un proxy inverso blindado diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques.
 
 ---
 
@@ -20,61 +20,61 @@ Es el método más limpio y evita conflictos con la autenticación propia del se
 *   **Contraseña:** `TU_APP_TOKEN_AQUÍ`
 *   **Comportamiento:** ReGiO intercepta la autenticación básica, valida el token y limpia el header `Authorization` antes de pasar la petición al backend.
 
-> **Nota de Seguridad:** Se ha eliminado el soporte de tokens en la URL (`?api_key=...`) para evitar filtraciones en logs y el historial del navegador.
-
 ---
 
 ## 2. Seguridad y Protección de Red
 
-ReGiO implementa varias capas de defensa activa:
-
 ### Fail2Ban Integrado
-El sistema monitoriza intentos fallidos de login:
-*   **Bloqueo Individual:** 5 intentos fallidos desde una IP resultan en un bloqueo de 15 minutos.
-*   **Bloqueo de Rango (Subnet):** 15 intentos fallidos desde un mismo rango ( /24 en IPv4 o /64 en IPv6) resultan en un bloqueo de 1 hora para todo el rango.
-*   **Persistencia:** Las IPs bloqueadas se guardan en la base de datos SQLite para mantener el bloqueo incluso tras un reinicio.
+Monitoriza intentos fallidos de login:
+*   **Bloqueo Individual:** 5 intentos fallidos resultan en un bloqueo de 15 minutos.
+*   **Bloqueo de Rango (Subnet):** 15 intentos fallidos desde un mismo rango (/24 en IPv4 o /64 en IPv6) resultan en un bloqueo de 1 hora.
 
-### Rate Limiting
-Protección contra ataques de denegación de servicio (DoS) y fuerza bruta:
-*   **Límite Global:** 100 peticiones por minuto por IP.
-*   **Respuesta:** HTTP 429 (Too Many Requests).
+### Validación de IPs de Confianza (Antispoofing)
+ReGiO no confía ciegamente en cabeceras como `CF-Connecting-IP`. Solo se leen estas cabeceras si la petición proviene de una IP autorizada en la variable `TRUSTED_PROXIES`.
+
+### Protección SSRF Avanzada
+La función `isValidTarget` bloquea cualquier intento de apuntar el proxy a:
+*   Rangos de IP privados (RFC 1918).
+*   Interfaces de loopback y localhost.
+*   Direcciones Link-local e IPv6 ULA.
+*   *Protección DNS:* El sistema resuelve dominios antes de conectar para verificar que no ocultan IPs restringidas.
 
 ### Hardening de Cabeceras
-Cada respuesta servida por ReGiO incluye:
-*   `X-Content-Type-Options: nosniff`
-*   `X-Frame-Options: DENY` (Evita Clickjacking)
-*   `X-XSS-Protection: 1; mode=block`
-*   `Strict-Transport-Security (HSTS)`: 1 año.
+Cada respuesta incluye: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block` y `Strict-Transport-Security`.
 
 ---
 
-## 3. Arquitectura y Almacenamiento
+## 3. Cifrado y Persistencia
 
-### Estructura de Datos
-*   **Base de Datos:** SQLite (`data/regio.db`). Almacena usuarios, hashes de tokens (SHA-256), sesiones activas persistentes e historial de bloqueos.
-*   **Configuración de Servicios:** `data/config.json`. Mapea dominios a URLs internas de backend.
+### Cifrado en Reposo (AES-256-GCM)
+Los secretos TOTP (2FA) se almacenan cifrados en la base de datos utilizando AES-GCM con una clave maestra (`MASTER_KEY`). Esto impide que un robo de la base de datos comprometa los segundos factores de los usuarios.
 
-### Flujo de Petición
-1.  **Recepción:** Se obtiene la IP real (soporta Cloudflare via `CF-Connecting-IP`).
-2.  **Validación de Red:** Chequeo de Rate Limit e IP Blacklist.
-3.  **Auth Check:**
-    *   Si existe Cookie de sesión: Valida contra `ActiveSessions` (memoria).
-    *   Si no hay cookie: Busca `X-API-Key` o `Basic Auth`.
-4.  **Routing:** Si es el dominio de administración, sirve el panel interno. Si es un dominio configurado, actúa como proxy.
-5.  **Proxy:** Reescribe headers (`X-Forwarded-Host`) y limpia credenciales de ReGiO para no confundir al backend.
+### Sesiones Blindadas
+*   **CSRF Persistente:** Los tokens CSRF se guardan en la base de datos vinculados a la sesión. Esto permite reiniciar el servidor sin invalidar los formularios abiertos de los usuarios.
+*   **SameSite Strict:** Las cookies de sesión están configuradas como `SameSite: Strict` para máxima protección.
 
 ---
 
-## 4. Gestión de App Tokens
+## 4. Gestión de Usuarios e Invitaciones
 
-Los App Tokens son la forma segura de dar acceso a servicios externos sin compartir la contraseña maestra del usuario.
-*   **Un solo uso visual:** El token original solo se muestra una vez al crearlo.
-*   **Almacenamiento Seguro:** ReGiO solo guarda el hash SHA-256 del token.
-*   **Auditoría:** Cada token registra su fecha de último uso.
+### Invitaciones Seguras
+Al crear un usuario, el administrador obtiene un **Token de Invitación** único. El nuevo usuario debe acceder mediante una URL especial (`?invite=TOKEN`) para establecer su contraseña por primera vez. Esto evita el secuestro de cuentas recién creadas mediante enumeración de nombres.
+
+### Auditoría Inalterable
+El registro de eventos es permanente y no puede ser eliminado desde el panel de control, garantizando que todas las acciones administrativas dejen un rastro de auditoría confiable.
 
 ---
 
-## 5. Requisitos del Entorno
+## 5. Arquitectura de Proxy
 
-*   **ADMIN_DOMAIN:** Variable de entorno obligatoria que define el dominio donde reside el panel de control.
-*   **Puertos:** ReGiO escucha internamente en el puerto `80`. Se recomienda su despliegue tras un terminador SSL (como Caddy, Nginx o Cloudflare) para habilitar HTTPS.
+ReGiO utiliza un transporte HTTP personalizado para sus operaciones de proxy:
+*   **Timeouts Estrictos:** Timeout de 10 segundos para cabeceras de respuesta y 5 segundos para conexión inicial.
+*   **Limpieza de Credenciales:** El gateway asegura que ningún dato de autenticación propio de ReGiO llegue al backend, eliminando headers de identificación antes de completar el proxy.
+
+---
+
+## 6. Variables de Entorno
+
+*   **ADMIN_DOMAIN:** Dominio donde reside el panel administrativo.
+*   **MASTER_KEY:** Clave de 32 bytes (o cadena hasheada) para el cifrado AES.
+*   **TRUSTED_PROXIES:** Lista separada por comas de IPs o rangos CIDR autorizados.

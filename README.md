@@ -1,23 +1,19 @@
 # reGiO: Reverse Proxy Seguro con Panel de Administración
 
-**reGiO** es un proxy inverso ligero y seguro escrito en Go, diseñado para proteger tus servicios locales expuestos a internet (ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o Ngrok).
-
-Ofrece una capa de **autenticación centralizada**, **bloqueo automático de ataques por fuerza bruta** y un **panel de administración web** para gestionar tus redirecciones de forma visual.
+**reGiO** es un proxy inverso blindado y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o entornos de red privada.
 
 ---
 
 ## Características Principales
 
-- **Autenticación Multi-Usuario:** Sistema de inicio de sesión seguro basado en sesiones con soporte para múltiples usuarios y roles.
-- **Soporte para 2FA (TOTP):** Los usuarios pueden activar la autenticación en dos pasos para una capa extra de seguridad.
-- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs tras repetidos intentos fallidos. Detecta la IP real incluso detrás de proxies como Cloudflare.
-- **App Tokens Avanzados:** Genera tokens de acceso para aplicaciones, scripts o clientes Git.
-- **Soporte de Cabeceras Estándar:**
-  - `Authorization: Bearer <TOKEN>`
-  - `X-Regio-Token: <TOKEN>`
-  - `X-API-Key: <TOKEN>`
-- **Bypass Seguro por Cabecera:** Permite el acceso automático a un servicio si se presenta una cabecera secreta preconfigurada (ideal para webhooks o integraciones CI/CD).
-- **Panel de Administración Web:** Interfaz gráfica para gestionar servicios, usuarios, bloqueos de IP y registro de eventos en tiempo real.
+- **Autenticación Blindada:** Sistema de sesiones persistentes con protección CSRF global.
+- **Soporte para 2FA (TOTP):** Autenticación en dos pasos con secretos cifrados en reposo (AES-256-GCM).
+- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs y rangos de red (/24 o /64) tras intentos fallidos.
+- **Validación de Proxies de Confianza:** Prevención de suplantación de identidad (Spoofing) mediante la validación de IPs de confianza (vía `TRUSTED_PROXIES`).
+- **Protección SSRF Avanzada:** Bloqueo estricto de accesos a IPs privadas (RFC 1918) y loopback desde el proxy.
+- **App Tokens Seguros:** Gestión de tokens para APIs con haseo SHA-256 y auditoría de uso.
+- **Invitaciones Seguras:** Los nuevos usuarios requieren un token único de un solo uso para establecer su contraseña.
+- **DoS Mitigation:** Timeouts estrictos en la comunicación con backends para garantizar la estabilidad.
 - **Docker Ready:** Imagen ultra-ligera (< 15MB) basada en Alpine Linux.
 
 ---
@@ -28,8 +24,9 @@ Ofrece una capa de **autenticación centralizada**, **bloqueo automático de ata
 git clone https://github.com/nef734/regio.git
 cd regio
 
-# Configura tu dominio de administración en el .env
+# Configura tu entorno
 cp .env.example .env
+# Define ADMIN_DOMAIN, MASTER_KEY y TRUSTED_PROXIES
 nano .env
 
 # Despliega con Docker
@@ -40,54 +37,43 @@ docker compose up -d --build
 
 ## Guía de Autenticación para Aplicaciones
 
-reGiO ofrece flexibilidad total para que tus aplicaciones se conecten de forma segura sin pasar por el login visual.
+reGiO utiliza el header **`X-API-Key`** como método estándar para evitar conflictos con los sistemas de autenticación de los servicios finales (como Gitea o Jenkins).
 
 ### 1. Uso con Git (Recomendado)
-Para evitar tokens en la URL y mantener la compatibilidad con las credenciales de tu servidor Git (Gogs/Gitea), configura Git para enviar el token de reGiO en una cabecera:
+Configura Git para enviar el token en la cabecera estándar de reGiO:
 
 ```bash
-git config http.extraHeader "X-Regio-Token: TU_TOKEN_DE_REGIO"
+git config http.extraHeader "X-API-Key: TU_TOKEN_DE_REGIO"
 ```
-Esto permite que `git push/pull` funcione con la URL limpia: `http://vit.734038.xyz/user/repo.git`.
+Esto permite que `git push/pull` funcione sin interferir con las credenciales de tu servidor Git.
 
 ### 2. Uso con APIs y Scripts
-Puedes usar el estándar Bearer o cabeceras personalizadas:
+El método recomendado es mediante cabeceras HTTP:
 
 ```bash
-# Usando Bearer (Estándar API)
-curl -H "Authorization: Bearer TU_TOKEN" http://api.tudominio.com/data
+# Método Recomendado
+curl -H "X-API-Key: TU_TOKEN" http://api.tudominio.com/data
 
-# Usando X-Regio-Token
-curl -H "X-Regio-Token: TU_TOKEN" http://api.tudominio.com/data
+# Fallback: Basic Auth (el token se usa como contraseña)
+curl -u "usuario:TU_TOKEN" http://api.tudominio.com/data
 ```
-
-### 3. Acceso vía Path (Rápido)
-Si no puedes configurar cabeceras, usa el token directamente en la dirección:
-`http://app.tudominio.com/r-auth/TU_TOKEN/ruta/destino`
 
 ---
 
-## Configuración de Bypass Seguro (Avanzado)
+## Variables de Entorno Críticas
 
-En lugar de hacer un servicio totalmente "público", puedes definir una "llave de paso" en `config.json`. Solo las peticiones que incluyan esa cabecera exacta podrán saltar la autenticación de reGiO:
-
-```json
-{
-  "servicios": {
-    "webhook.tudominio.com": "http://192.168.1.50:9000"
-  },
-  "bypass_headers": {
-    "webhook.tudominio.com": "X-My-Secret:SuperClave123"
-  }
-}
-```
+| Variable | Descripción | Ejemplo |
+| :--- | :--- | :--- |
+| `ADMIN_DOMAIN` | Dominio para el panel de control | `admin.regio.io` |
+| `MASTER_KEY` | Clave para cifrar secretos TOTP | `clave_larga_y_secreta` |
+| `TRUSTED_PROXIES` | IPs/Rangos en los que confiar cabeceras | `127.0.0.1,172.18.0.0/16` |
 
 ---
 
 ## Seguridad y Limpieza
-reGiO es inteligente: una vez que valida tu token (ya sea por Path, Query o Header), **elimina esas cabeceras y parámetros** antes de pasar la petición al servicio final. Esto evita que tus tokens se filtren a los backends y previene conflictos con sus propios sistemas de autenticación.
+Una vez validada la autenticación, reGiO **elimina automáticamente** las cabeceras `X-API-Key` y los datos de `Authorization` antes de pasar la petición al servicio final, garantizando que tus credenciales de acceso nunca se filtren al backend.
 
 ---
 
 ## Licencia
-MIT License. Hecho para la comunidad Self-Hosted.
+MIT License. Hecho para la comunidad Self-Hosted con foco en la seguridad.
