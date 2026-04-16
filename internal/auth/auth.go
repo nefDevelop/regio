@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
@@ -9,6 +11,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +20,63 @@ import (
 	"regio/internal/models"
 	"golang.org/x/crypto/argon2"
 )
+
+var encryptionKey []byte
+
+func init() {
+	key := os.Getenv("MASTER_KEY")
+	if key == "" {
+		// En producción esto debería estar en una variable de entorno.
+		// Si no existe, usamos una derivación del nombre del host o algo persistente sería mejor,
+		// pero por ahora alertamos de que es necesaria para el cifrado real.
+		encryptionKey = []byte("regio-default-master-key-32bytes") 
+	} else {
+		hash := sha256.Sum256([]byte(key))
+		encryptionKey = hash[:]
+	}
+}
+
+func Encrypt(text string) (string, error) {
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(text), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+func Decrypt(cryptoText string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(cryptoText)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return "", fmt.Errorf("ciphertext demasiado corto")
+	}
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plaintext), nil
+}
 
 func HashPassword(password string) string {
 	salt := make([]byte, 16)

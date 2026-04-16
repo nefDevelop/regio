@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	
 
 	"regio/internal/auth"
 	"regio/internal/db"
@@ -35,6 +37,7 @@ var (
 	AdminDomain    string
 	SessionKey     = "REGIO_session"
 	Tmpls          *template.Template
+	TrustedProxies []string
 	// Transport personalizado para el proxy con timeouts estrictos
 	proxyTransport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -52,8 +55,50 @@ var (
 
 func Init() {
 	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
+	
+	// Cargar proxies de confianza desde el entorno
+	proxies := os.Getenv("TRUSTED_PROXIES")
+	if proxies != "" {
+		TrustedProxies = strings.Split(proxies, ",")
+		for i := range TrustedProxies {
+			TrustedProxies[i] = strings.TrimSpace(TrustedProxies[i])
+		}
+	}
+
 	InitSecurity()
 	LoadSessions()
+}
+
+func isTrustedProxy(ip string) bool {
+	if len(TrustedProxies) == 0 {
+		return false
+	}
+	for _, trusted := range TrustedProxies {
+		if trusted == ip {
+			return true
+		}
+		if strings.Contains(trusted, "/") {
+			_, ipnet, err := net.ParseCIDR(trusted)
+			if err == nil && ipnet.Contains(net.ParseIP(ip)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func getRealIP(r *http.Request) string {
+	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if isTrustedProxy(remoteIP) {
+		if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+			return cfIP
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			ips := strings.Split(xff, ",")
+			return strings.TrimSpace(ips[0])
+		}
+	}
+	return remoteIP
 }
 
 func LoadSessions() {
@@ -102,19 +147,28 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 	if r.Method == "POST" {
 		inputUser := r.FormValue("user")
 
-		var hash, totp string
+		var hash, totpEnc, inviteStored string
 		var id int
 		var isAdmin, totpActive bool
-		err := db.DB.QueryRow("SELECT id, password_hash, totp_secret, is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totp, &isAdmin, &totpActive)
+		err := db.DB.QueryRow("SELECT id, password_hash, totp_secret, invite_token, is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totpEnc, &inviteStored, &isAdmin, &totpActive)
 
 		if err == nil && hash == "" {
+			// El usuario no tiene contraseña, verificamos el token de invitación
+			inviteGiven := r.URL.Query().Get("invite")
+			if inviteGiven == "" || inviteGiven != inviteStored {
+				db.LogEvent(fmt.Sprintf("⚠ Intento de acceso a usuario sin contraseña sin token válido: %s", inputUser), ip)
+				http.Redirect(w, r, "/REGIO-login?error=invalid_invite", http.StatusSeeOther)
+				return
+			}
+
 			step := r.FormValue("step")
 			if step == "set_password" {
 				newPass := r.FormValue("new_pass")
 				confirmPass := r.FormValue("confirm_pass")
 				if newPass != "" && newPass == confirmPass {
 					newHash := auth.HashPassword(newPass)
-					db.DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, id)
+					// Guardamos la pass y BORRAMOS el invite_token
+					db.DB.Exec("UPDATE users SET password_hash = ?, invite_token = NULL WHERE id = ?", newHash, id)
 
 					token := auth.GenerateSessionToken()
 					http.SetCookie(w, &http.Cookie{
@@ -158,8 +212,14 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 		loginValido := false
 		if err == nil && auth.VerifyPassword(inputPass, hash) {
-			if !totpActive || input2fa == auth.GetTOTPCode(totp) {
+			if !totpActive {
 				loginValido = true
+			} else {
+				// Descifrar secreto para validar TOTP
+				totpSecret, decErr := auth.Decrypt(totpEnc)
+				if decErr == nil && input2fa == auth.GetTOTPCode(totpSecret) {
+					loginValido = true
+				}
 			}
 		}
 
@@ -267,8 +327,12 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			newUser := r.FormValue("new_user")
 			if newUser != "" {
 				totp := auth.GenerateTOTPSecret()
-				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, '', ?, 0, 0)", newUser, totp)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario creado (Pendiente contraseña): %s", newUser), user.Username)
+				totpEnc, _ := auth.Encrypt(totp)
+				inviteToken := auth.GenerateSessionToken() // Usamos la misma función para el token de invitación
+				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, invite_token, is_admin, totp_active) VALUES (?, '', ?, ?, 0, 0)", newUser, totpEnc, inviteToken)
+				
+				inviteURL := fmt.Sprintf("https://%s/REGIO-login?invite=%s", AdminDomain, inviteToken)
+				db.LogEvent(fmt.Sprintf("⚇ Usuario creado: %s. URL de invitación: %s", newUser, inviteURL), user.Username)
 			}
 		} else if accion == "delete_user" {
 			delUser := r.FormValue("del_user")
@@ -447,11 +511,16 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var u models.User
-	db.DB.QueryRow("SELECT id, username, totp_secret, totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &u.TotpSecret, &u.TotpActive, &u.IsAdmin)
+	var totpEnc string
+	db.DB.QueryRow("SELECT id, username, totp_secret, totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &totpEnc, &u.TotpActive, &u.IsAdmin)
 
-	if u.TotpSecret == "" {
-		u.TotpSecret = auth.GenerateTOTPSecret()
-		db.DB.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", u.TotpSecret, u.ID)
+	if totpEnc == "" {
+		rawTotp := auth.GenerateTOTPSecret()
+		totpEnc, _ = auth.Encrypt(rawTotp)
+		db.DB.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", totpEnc, u.ID)
+		u.TotpSecret = rawTotp
+	} else {
+		u.TotpSecret, _ = auth.Decrypt(totpEnc)
 	}
 
 	var newToken string
@@ -685,11 +754,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		status int
 	}
 	sw := &statusWriter{ResponseWriter: w, status: 200}
-	ip := r.Header.Get("CF-Connecting-IP")
-	if ip == "" {
-		var err error
-		if ip, _, err = net.SplitHostPort(r.RemoteAddr); err != nil { ip = r.RemoteAddr }
-	}
+	
+	ip := getRealIP(r)
+	
 	defer func() {
 		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.Path, ip, r.Host), "Sistema")
 	}()

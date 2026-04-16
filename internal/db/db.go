@@ -25,6 +25,7 @@ func InitDB() {
 		username TEXT UNIQUE,
 		password_hash TEXT,
 		totp_secret TEXT,
+		invite_token TEXT,
 		is_admin BOOLEAN DEFAULT 0,
 		totp_active BOOLEAN DEFAULT 0
 	);`
@@ -33,6 +34,7 @@ func InitDB() {
 		log.Fatal("Error creando tabla users:", err)
 	}
 
+	DB.Exec("ALTER TABLE users ADD COLUMN invite_token TEXT;")
 	DB.Exec("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;")
 	DB.Exec("ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;")
 	DB.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT, performer TEXT);")
