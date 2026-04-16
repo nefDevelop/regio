@@ -1,6 +1,6 @@
-# reGiO: Reverse Proxy Seguro con Panel de Administración
+# reGIO: Reverse Proxy Seguro con Panel de Administración
 
-**reGiO** es un proxy inverso blindado y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o entornos de red privada.
+**reGIO** es un proxy inverso blindado y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels (probado en el) en Tailscale Funnel o entornos de red privada tambien deberia funcionar.
 
 ---
 
@@ -37,10 +37,10 @@ docker compose up -d --build
 
 ## Guía de Autenticación para Aplicaciones
 
-reGiO utiliza el header **`X-API-Key`** como método estándar para evitar conflictos con los sistemas de autenticación de los servicios finales (como Gitea o Jenkins).
+reGIO utiliza el header **`X-API-Key`** como método estándar para evitar conflictos con los sistemas de autenticación de los servicios finales (como Gitea o Jenkins).
 
 ### 1. Uso con Git (Recomendado)
-Configura Git para enviar el token en la cabecera estándar de reGiO:
+Configura Git para enviar el token en la cabecera estándar de reGIO:
 
 ```bash
 git config http.extraHeader "X-API-Key: TU_TOKEN_DE_REGIO"
@@ -71,7 +71,7 @@ curl -u "usuario:TU_TOKEN" http://api.tudominio.com/data
 ---
 
 ## Seguridad y Limpieza
-Una vez validada la autenticación, reGiO **elimina automáticamente** las cabeceras `X-API-Key` y los datos de `Authorization` antes de pasar la petición al servicio final, garantizando que tus credenciales de acceso nunca se filtren al backend.
+Una vez validada la autenticación, reGIO **elimina automáticamente** las cabeceras `X-API-Key` y los datos de `Authorization` antes de pasar la petición al servicio final, garantizando que tus credenciales de acceso nunca se filtren al backend.
 
 ---
 

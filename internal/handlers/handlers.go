@@ -603,7 +603,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 		rawTokens = append(rawTokens, t)
 	}
 
-	otpUrl := fmt.Sprintf("otpauth://totp/reGiO:%%20%s?secret=%s&issuer=reGiO", u.Username, u.TotpSecret)
+	otpUrl := fmt.Sprintf("otpauth://totp/reGIO:%%20%s?secret=%s&issuer=reGIO", u.Username, u.TotpSecret)
 
 	type SessionDisplay struct {
 		Token      string
@@ -836,7 +836,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !validSession {
 		if !strings.Contains(r.Header.Get("Accept"), "text/html") {
-			sw.Header().Set("WWW-Authenticate", `Basic realm="reGiO protegido"`)
+			sw.Header().Set("WWW-Authenticate", `Basic realm="reGIO protegido"`)
 			sw.status = http.StatusUnauthorized
 			http.Error(sw, "No autorizado", http.StatusUnauthorized)
 			return
