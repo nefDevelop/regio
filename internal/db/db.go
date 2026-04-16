@@ -53,6 +53,7 @@ func InitDB() {
 	CREATE TABLE IF NOT EXISTS sessions (
 		token TEXT PRIMARY KEY,
 		user_id INTEGER,
+		csrf_token TEXT,
 		ip TEXT,
 		user_agent TEXT,
 		last_active DATETIME,
@@ -63,6 +64,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla sessions:", err)
 	}
+	DB.Exec("ALTER TABLE sessions ADD COLUMN csrf_token TEXT;") // Asegurar que existe si la tabla ya estaba creada
 
 	createTokensTable := `
 	CREATE TABLE IF NOT EXISTS app_tokens (
