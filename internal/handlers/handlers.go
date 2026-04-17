@@ -145,11 +145,15 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 	if r.Method == "POST" {
 		inputUser := r.FormValue("user")
+		LogEvent(fmt.Sprintf("🔍 Intento de login para usuario: %s desde %s", inputUser, ip), "Sistema")
 
 		var hash, totpEnc, inviteStored string
 		var id int
 		var isAdmin, totpActive bool
 		err := db.DB.QueryRow("SELECT id, password_hash, totp_secret, invite_token, is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totpEnc, &inviteStored, &isAdmin, &totpActive)
+		if err != nil {
+			LogEvent(fmt.Sprintf("❌ Error buscando usuario %s en DB: %v", inputUser, err), "Sistema")
+		}
 
 		if err == nil && hash == "" {
 			// El usuario no tiene contraseña, verificamos el token de invitación
@@ -203,6 +207,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 		loginValido := false
 		if err == nil && auth.VerifyPassword(inputPass, hash) {
+			LogEvent(fmt.Sprintf("✅ Contraseña correcta para %s", inputUser), "Sistema")
 			if !totpActive {
 				loginValido = true
 			} else {
@@ -210,8 +215,12 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 				totpSecret, decErr := auth.Decrypt(totpEnc)
 				if decErr == nil && input2fa == auth.GetTOTPCode(totpSecret) {
 					loginValido = true
+				} else {
+					LogEvent(fmt.Sprintf("❌ Fallo TOTP para %s", inputUser), "Sistema")
 				}
 			}
+		} else {
+			LogEvent(fmt.Sprintf("❌ Contraseña incorrecta para %s", inputUser), "Sistema")
 		}
 
 		if loginValido {
@@ -760,6 +769,7 @@ func UpdateSessionActivity(token string) {
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	LogEvent(fmt.Sprintf("🍪 Creando cookie de sesión. Secure: %v, SameSite: Lax, Proto: %s", isSecure, r.Header.Get("X-Forwarded-Proto")), "Sistema")
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionKey,
 		Value:    token,
@@ -787,7 +797,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	ip := getRealIP(r)
 
 	defer func() {
-		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.Path, ip, r.Host), "Sistema")
+		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.RequestURI(), ip, r.Host), "Sistema")
 	}()
 
 	sw.Header().Set("X-Content-Type-Options", "nosniff")
@@ -833,11 +843,19 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := r.Cookie(SessionKey)
 	if err == nil {
+		LogEvent(fmt.Sprintf("🔍 Cookie encontrada en %s: %s...", r.URL.Path, cookie.Value[:8]), "Sistema")
 		Mu.Lock()
 		user, validSession = ActiveSessions[cookie.Value]
 		Mu.Unlock()
 		if validSession {
 			UpdateSessionActivity(cookie.Value)
+			LogEvent(fmt.Sprintf("✅ Sesión válida para %s", user.Username), "Sistema")
+		} else {
+			LogEvent("❌ Sesión no encontrada en ActiveSessions", "Sistema")
+		}
+	} else {
+		if !strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Path != "/REGIO-login" && r.URL.Path != "/setup" {
+			LogEvent(fmt.Sprintf("🔍 No hay cookie de sesión en %s", r.URL.Path), "Sistema")
 		}
 	}
 
