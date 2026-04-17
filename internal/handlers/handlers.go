@@ -170,15 +170,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					db.DB.Exec("UPDATE users SET password_hash = ?, invite_token = NULL WHERE id = ?", newHash, id)
 
 					token := auth.GenerateSessionToken()
-					http.SetCookie(w, &http.Cookie{
-						Name:     SessionKey,
-						Value:    token,
-						Path:     "/",
-						HttpOnly: true,
-						Secure:   true,
-						SameSite: http.SameSiteStrictMode,
-						MaxAge:   3600 * 24,
-					})
+					setSessionCookie(w, r, token)
 
 					csrf := auth.GenerateSessionToken()
 					Mu.Lock()
@@ -224,15 +216,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 		if loginValido {
 			token := auth.GenerateSessionToken()
-			http.SetCookie(w, &http.Cookie{
-				Name:     SessionKey,
-				Value:    token,
-				Path:     "/",
-				HttpOnly: true,
-				Secure:   true,
-				SameSite: http.SameSiteStrictMode,
-				MaxAge:   3600 * 24,
-			})
+			setSessionCookie(w, r, token)
 
 			csrf := auth.GenerateSessionToken()
 			Mu.Lock()
@@ -774,11 +758,30 @@ func UpdateSessionActivity(token string) {
 	}
 }
 
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     SessionKey,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   3600 * 24,
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
 func MainHandler(w http.ResponseWriter, r *http.Request) {
-	type statusWriter struct {
-		http.ResponseWriter
-		status int
-	}
 	sw := &statusWriter{ResponseWriter: w, status: 200}
 
 	ip := getRealIP(r)
