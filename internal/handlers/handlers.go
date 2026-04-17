@@ -103,7 +103,7 @@ func getRealIP(r *http.Request) string {
 func LoadSessions() {
 	Mu.Lock()
 	defer Mu.Unlock()
-	rows, err := db.DB.Query("SELECT s.token, s.user_id, s.csrf_token, u.username, u.is_admin, u.totp_active, s.ip, s.last_active FROM sessions s JOIN users u ON s.user_id = u.id")
+	rows, err := db.DB.Query("SELECT s.token, s.user_id, COALESCE(s.csrf_token, ''), u.username, u.is_admin, u.totp_active, s.ip, s.last_active FROM sessions s JOIN users u ON s.user_id = u.id")
 	if err != nil {
 		return
 	}
@@ -150,7 +150,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		var hash, totpEnc, inviteStored string
 		var id int
 		var isAdmin, totpActive bool
-		err := db.DB.QueryRow("SELECT id, password_hash, totp_secret, invite_token, is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totpEnc, &inviteStored, &isAdmin, &totpActive)
+		err := db.DB.QueryRow("SELECT id, COALESCE(password_hash, ''), COALESCE(totp_secret, ''), COALESCE(invite_token, ''), is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totpEnc, &inviteStored, &isAdmin, &totpActive)
 		if err != nil {
 			LogEvent(fmt.Sprintf("❌ Error buscando usuario %s en DB: %v", inputUser, err), "Sistema")
 		}
@@ -361,7 +361,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var users []models.User
-	rows, _ := db.DB.Query("SELECT id, username, totp_secret, is_admin, totp_active FROM users")
+	rows, _ := db.DB.Query("SELECT id, username, COALESCE(totp_secret, ''), is_admin, totp_active FROM users")
 	defer rows.Close()
 	for rows.Next() {
 		var u models.User
@@ -508,7 +508,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	var totpEnc string
-	db.DB.QueryRow("SELECT id, username, totp_secret, totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &totpEnc, &u.TotpActive, &u.IsAdmin)
+	db.DB.QueryRow("SELECT id, username, COALESCE(totp_secret, ''), totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &totpEnc, &u.TotpActive, &u.IsAdmin)
 
 	if totpEnc == "" {
 		rawTotp := auth.GenerateTOTPSecret()
