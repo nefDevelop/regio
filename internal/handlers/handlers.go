@@ -875,7 +875,12 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validSession && r.Host != AdminDomain {
-		if bypass, ok := Config.BypassHeaders[r.Host]; ok && bypass != "" {
+		Mu.Lock()
+		bypass, okBypass := Config.BypassHeaders[r.Host]
+		publico := Config.Publicos[r.Host]
+		Mu.Unlock()
+
+		if okBypass && bypass != "" {
 			parts := strings.SplitN(bypass, ":", 2)
 			if len(parts) == 2 {
 				headerName, expectedValue := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
@@ -885,7 +890,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if !validSession && Config.Publicos[r.Host] {
+		if !validSession && publico {
 			validSession = true
 			user = &models.User{Username: "public", IsAdmin: false}
 		}
@@ -937,7 +942,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	Mu.Lock()
 	target, ok := Config.Servicios[r.Host]
+	Mu.Unlock()
 	if !ok {
 		sw.status = http.StatusNotFound
 		http.Error(sw, "Dominio no configurado en ReGiO: "+r.Host, http.StatusNotFound)

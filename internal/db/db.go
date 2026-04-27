@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"regio/internal/models"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -93,7 +94,11 @@ func CheckNeedsSetup() bool {
 
 func SaveConfig(config models.Config) error {
 	data, _ := json.MarshalIndent(config, "", "  ")
-	return os.WriteFile("./data/config.json", data, 0644)
+	tmpFile := "./data/config.json.tmp"
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpFile, "./data/config.json")
 }
 
 func LogEvent(message string, performer string) {

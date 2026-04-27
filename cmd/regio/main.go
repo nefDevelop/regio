@@ -9,7 +9,45 @@ import (
 
 	"regio/internal/db"
 	"regio/internal/handlers"
+	"regio/internal/models"
 )
+
+func loadConfig() {
+	data, err := os.ReadFile("./data/config.json")
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Println("ℹ️ No se encontró config.json, iniciando con configuración vacía.")
+		} else {
+			log.Printf("✕ ERROR leyendo config.json: %v", err)
+		}
+		return
+	}
+
+	var tempConfig models.Config
+	if err := json.Unmarshal(data, &tempConfig); err != nil {
+		log.Printf("✕ ERROR parseando config.json (ignorando cambios): %v", err)
+		return
+	}
+
+	handlers.Mu.Lock()
+	handlers.Config = tempConfig
+	handlers.Mu.Unlock()
+}
+
+func watchConfig() {
+	var lastMod time.Time
+	if stat, err := os.Stat("./data/config.json"); err == nil {
+		lastMod = stat.ModTime()
+	}
+	for {
+		time.Sleep(5 * time.Second)
+		if stat, err := os.Stat("./data/config.json"); err == nil && stat.ModTime().After(lastMod) {
+			log.Println("ℹ️ Cambios detectados en config.json, recargando configuración...")
+			loadConfig()
+			lastMod = stat.ModTime()
+		}
+	}
+}
 
 func main() {
 	log.Println("🚀 Iniciando ReGiO...")
@@ -37,28 +75,8 @@ func main() {
 
 	// 4. Cargar configuración de servicios
 	log.Println("ℹ️ Cargando configuración de servicios...")
-	configFile, err := os.ReadFile("./data/config.json")
-	if err == nil {
-		err = json.Unmarshal(configFile, &handlers.Config)
-		if err != nil {
-			log.Printf("✕ ERROR: No se pudo procesar el JSON de config.json: %v", err)
-		}
-		if handlers.Config.Servicios == nil {
-			handlers.Config.Servicios = make(map[string]string)
-		}
-		if handlers.Config.Publicos == nil {
-			handlers.Config.Publicos = make(map[string]bool)
-		}
-		if handlers.Config.BypassHeaders == nil {
-			handlers.Config.BypassHeaders = make(map[string]string)
-		}
-		log.Printf("✅ Configuración cargada: %d servicios encontrados.", len(handlers.Config.Servicios))
-	} else {
-		log.Printf("⚠️ No se pudo cargar config.json: %v. Usando configuración vacía.", err)
-		handlers.Config.Servicios = make(map[string]string)
-		handlers.Config.Publicos = make(map[string]bool)
-		handlers.Config.BypassHeaders = make(map[string]string)
-	}
+	loadConfig()
+	go watchConfig()
 
 	// Rutina de limpieza en segundo plano (IPs bloqueadas y Rate Limiter)
 	go func() {
@@ -88,7 +106,7 @@ func main() {
 		IdleTimeout:  300 * time.Second,
 	}
 
-	err = server.ListenAndServe()
+	err := server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("✕ ERROR FATAL al iniciar el servidor: %v", err)
 	}
