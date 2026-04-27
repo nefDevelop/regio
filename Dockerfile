@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . .
 # Descargar dependencias y compilar desde la nueva estructura
 RUN go mod download && \
-    CGO_ENABLED=0 GOOS=linux go build -a -o REGIO ./cmd/regio
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" REGIO ./cmd/regio
 
 # Etapa 2: Imagen final minimalista
 FROM alpine:latest
