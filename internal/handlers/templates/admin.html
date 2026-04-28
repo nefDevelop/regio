@@ -6,133 +6,36 @@
     <link rel="icon" type="image/svg+xml" href="/static/reGIO.svg" />
     <link rel="stylesheet" href="/static/style.css" />
     <style>
-      :root {
-        --primary-indigo: #6366f1;
-        --primary-amber: #fbbf24;
-      }
       .add-bridge-card {
-        margin-top: 32px;
-        padding: 32px;
+        margin-top: 32px; padding: 32px;
         background: rgba(15, 23, 42, 0.4);
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        box-sizing: border-box;
+        border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05);
       }
-      .add-bridge-card h3 {
-        margin: 0 0 24px 0;
-        font-size: 15px;
-        color: #818cf8;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      .bridge-form-flex {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        align-items: flex-end;
-      }
-      .input-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        flex: 1 1 200px;
-        min-width: 0;
-      }
-      .input-group.small {
-        flex: 1 1 150px;
-      }
-      .input-group.large {
-        flex: 2 1 300px;
-      }
-      .input-group.auto {
-        flex: 0 0 auto;
-      }
-      .input-group label {
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .input-group input {
-        width: 100%;
-      }
-      .token-field {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-      }
-      .btn-gen-token {
-        background: rgba(99, 102, 241, 0.1);
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        color: #818cf8;
-        padding: 0 16px;
-        border-radius: 12px;
-        height: 44px;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-weight: 600;
-        font-size: 13px;
-      }
-      .btn-gen-token:hover { background: var(--primary-indigo); color: white; }
-      
-      .public-check {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        color: var(--text-muted);
-        cursor: pointer;
-        height: 44px; /* Alineado con los inputs */
-        padding: 0 8px;
-      }
-      .public-check input {
-        width: 18px;
-        height: 18px;
-        cursor: pointer;
-      }
-      
-      .btn-create-bridge {
-        background: var(--primary-indigo);
-        color: white;
-        border: none;
-        padding: 0 32px;
-        height: 44px;
-        border-radius: 12px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: transform 0.1s;
-      }
-      .btn-create-bridge:active { transform: scale(0.98); }
-
-      @media (max-width: 768px) {
-        .bridge-form-flex { flex-direction: column; align-items: stretch; }
-        .input-group { flex: 1 1 auto; }
-        .public-check { height: auto; padding: 12px 0; }
-      }
-      .host-link {
-        color: #818cf8;
-        text-decoration: none;
-        transition: color 0.2s;
-      }
-      .host-link:hover {
-        color: #a5b4fc;
-        text-decoration: underline;
-      }
+      .add-bridge-card h3 { margin: 0 0 24px 0; font-size: 14px; color: #818cf8; text-transform: uppercase; letter-spacing: 1px; }
+      .bridge-form-flex { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+      .input-group { display: flex; flex-direction: column; gap: 8px; flex: 1 1 200px; min-width: 0; }
+      .input-group label { font-size: 10px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; height: 12px; }
+      .token-field { display: flex; gap: 8px; width: 100%; }
+      .btn-gen-token { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); color: #818cf8; padding: 0 16px; border-radius: 12px; height: 44px; cursor: pointer; font-weight: 600; }
+      .public-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer; height: 44px; padding-top: 20px; }
+      .btn-create-bridge { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; padding: 0 32px; height: 44px; border-radius: 12px; font-weight: 700; }
+      @media (max-width: 768px) { .bridge-form-flex { flex-direction: column; align-items: stretch; } }
     </style>
   </head>
   <body class="admin-view">
     <div class="header">
-      <h1><img src="/static/reGIO.svg" alt="logo" style="height: 40px; margin-right: 16px; filter: invert(1)" />reGIO Admin</h1>
+      <h1 style="display:flex; align-items:center; font-size: 24px;">
+        <img src="/static/reGIO.svg" alt="logo" style="height: 32px; margin-right: 12px; filter: invert(1)" />reGIO Admin
+      </h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <a href="/profile" class="btn-primary">Mi Perfil</a>
-        <a href="/logout" class="btn-del" style="height: 44px; padding: 0 20px; border-radius: 12px">Salir</a>
+        <a href="/profile" class="btn-primary" style="height:38px; font-size:13px">Mi Perfil</a>
+        <a href="/logout" class="btn-logout" style="height:38px; font-size:13px; padding: 0 16px">Salir</a>
       </div>
     </div>
 
     <div class="section">
-      <h2 style="display: flex; align-items: center; gap: 12px">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><rect x="9" y="2" width="6" height="6" rx="1"></rect></svg>
+      <h2 style="display: flex; align-items: center; gap: 12px; font-size: 18px; margin-bottom: 24px; border-bottom: 1px solid var(--surface-border); padding-bottom: 12px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><rect x="9" y="2" width="6" height="6" rx="1"></rect></svg>
         Puentes de Red
       </h2>
       
@@ -143,25 +46,25 @@
             {{range .HealthResults}}
             <tr id="row-{{.Host}}">
               <td>
-                <div class="view-mode" style="display: flex; align-items: center; gap: 8px">
+                <div class="view-mode" style="display: flex; align-items: center; gap: 10px">
                   <span class="status-dot {{if .Alive}}online{{else}}offline{{end}}"></span>
-                  <strong><a href="https://{{.Host}}" target="_blank" class="host-link">{{.Host}}</a></strong>
-                  {{if index $.Config.Publicos .Host}}<span class="badge" style="color: #4ade80">PÚBLICO</span>{{end}}
+                  <strong><a href="https://{{.Host}}" target="_blank" style="color:#818cf8">{{.Host}}</a></strong>
+                  {{if index $.Config.Publicos .Host}}<span class="badge" style="color: #4ade80; background: rgba(74,222,128,0.1)">PÚBLICO</span>{{end}}
                 </div>
                 <input type="text" form="form-{{.Host}}" name="host" value="{{.Host}}" class="edit-mode" style="display: none" />
               </td>
               <td>
-                <div class="view-mode">{{.Target}}</div>
-                <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none; width: 100%" />
+                <div class="view-mode" style="color: var(--text-muted); font-size: 13px">{{.Target}}</div>
+                <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none" />
               </td>
               <td>
                 <div class="view-mode" style="display: flex; gap: 8px">
                   <button class="btn-edit" onclick="toggleEdit('{{.Host}}')">Editar</button>
                   <form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="delete_service"/><input type="hidden" name="host" value="{{.Host}}"/><button class="btn-del">Borrar</button></form>
                 </div>
-                <div class="edit-mode" style="display: none; gap: 8px">
-                  <form id="form-{{.Host}}" method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="update_service"/><input type="hidden" name="old_host" value="{{.Host}}"/><button class="btn-success">OK</button></form>
-                  <button class="btn-logout" onclick="toggleEdit('{{.Host}}')">X</button>
+                <div class="edit-mode" style="display: none; gap: 8px; align-items: center">
+                  <form id="form-{{.Host}}" method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="update_service"/><input type="hidden" name="old_host" value="{{.Host}}"/><button class="btn-success" style="height: 32px; padding: 0 12px; font-size: 12px">OK</button></form>
+                  <button class="btn-logout" onclick="toggleEdit('{{.Host}}')" style="height: 32px; padding: 0 10px; font-size: 12px">X</button>
                 </div>
               </td>
             </tr>
@@ -171,7 +74,7 @@
       </div>
 
       <div class="add-bridge-card">
-        <h3>Añadir Nuevo Puente + Bypass</h3>
+        <h3>Añadir Nuevo Puente</h3>
         <form method="POST" class="bridge-form-flex">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="accion" value="add_service" />
@@ -183,44 +86,45 @@
 
           <div class="input-group">
             <label>Destino Local</label>
-            <input type="text" name="target" list="target-suggestions" placeholder="http://192.168.1.10:80" required />
+            <input type="text" name="target" list="target-suggestions" placeholder="http://10.0.0.5:80" required />
           </div>
 
-          <div class="input-group small">
-            <label>Identidad Key</label>
-            <input type="text" name="bypass_name" placeholder="Ej. GitHub" />
+          <div class="input-group" style="flex: 0 1 120px">
+            <label>Identidad</label>
+            <input type="text" name="bypass_name" placeholder="Ej. Git" />
           </div>
 
-          <div class="input-group large">
-            <label>Token Bypass (Opcional)</label>
+          <div class="input-group" style="flex: 1 1 200px">
+            <label>Token Bypass</label>
             <div class="token-field">
-              <input type="text" name="bypass_token" id="tk-out" placeholder="Generar ->" readonly style="background: rgba(0,0,0,0.2)" />
-              <button type="button" class="btn-gen-token" onclick="genTk()">Generar</button>
+              <input type="text" name="bypass_token" id="tk-out" placeholder="Token..." readonly style="background: rgba(0,0,0,0.2)" />
+              <button type="button" class="btn-gen-token" onclick="genTk()" style="padding:0 12px; font-size:12px">Gen</button>
             </div>
           </div>
 
           <div class="input-group auto">
             <label class="public-check">
-              <input type="checkbox" name="public" style="width: auto" /> Público
+              <input type="checkbox" name="public" style="width: 16px; height: 16px" /> Público
             </label>
           </div>
 
           <div class="input-group auto">
-            <button type="submit" class="btn-create-bridge">Añadir Puente</button>
+            <label></label> <!-- Espaciador para alinear botón -->
+            <button type="submit" class="btn-create-bridge">Añadir</button>
           </div>
         </form>
       </div>
     </div>
 
     <div class="section">
-      <h2>Gestión de Usuarios</h2>
+      <h2 style="font-size: 18px; margin-bottom: 20px;">Gestión de Usuarios</h2>
       <table>
         <thead><tr><th>Usuario</th><th>2FA</th><th>Acción</th></tr></thead>
         <tbody>
           {{range .Users}}
           <tr>
-            <td>{{.Username}} {{if .IsAdmin}}<span class="badge badge-admin">Admin</span>{{end}}</td>
-            <td>{{if .TotpActive}}<span class="badge badge-success">SÍ</span>{{else}}<span class="badge">NO</span>{{end}}</td>
+            <td style="font-size: 14px">{{.Username}} {{if .IsAdmin}}<span class="badge" style="color:#818cf8; background:rgba(99,102,241,0.1)">Admin</span>{{end}}</td>
+            <td>{{if .TotpActive}}<span class="badge" style="color:#34d399; background:rgba(16,185,129,0.1)">SÍ</span>{{else}}<span class="badge">NO</span>{{end}}</td>
             <td>
               {{if ne .ID 1}}
               <form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="delete_user"/><input type="hidden" name="del_user" value="{{.Username}}"/><button class="btn-del">Borrar</button></form>
@@ -232,44 +136,9 @@
       </table>
       <form method="POST" style="display:flex; gap:12px; margin-top:20px">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"/><input type="hidden" name="accion" value="add_user"/>
-        <input type="text" name="new_user" placeholder="Nuevo usuario" required style="flex:1" />
-        <button class="btn-add">Crear Usuario</button>
+        <input type="text" name="new_user" placeholder="Nombre del nuevo usuario" required style="max-width: 300px" />
+        <button class="btn-success" style="height: 44px">Crear Usuario</button>
       </form>
-    </div>
-
-    <div class="section">
-      <h2>Seguridad & Sesiones</h2>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px">
-        <div>
-          <h3>IPs Bloqueadas (Fail2Ban)</h3>
-          <table>
-            <thead><tr><th>IP / Rango</th><th>Expiración</th><th>Acción</th></tr></thead>
-            <tbody>
-              {{range .BannedIPs}}
-              <tr><td style="color:#ef4444">{{.Target}}</td><td>{{.Hasta}}</td><td><form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="unban_ip"/><input type="hidden" name="target_ip" value="{{.Target}}"/><button class="btn-primary">Liberar</button></form></td></tr>
-              {{end}}
-            </tbody>
-          </table>
-          <form method="POST" style="display:flex; gap:12px; margin-top:16px"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"/><input type="hidden" name="accion" value="ban_ip"/><input type="text" name="target_ip" placeholder="IP a bloquear" required style="flex:1" /><button class="btn-del">Bloquear</button></form>
-        </div>
-        <div>
-          <h3>Sesiones Activas</h3>
-          <table>
-            {{range .AllSessions}}
-            <tr><td><strong>{{.Username}}</strong></td><td>{{.IP}}</td><td>{{if not .IsCurrent}}<form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="revoke_session"/><input type="hidden" name="token" value="{{.Token}}"/><button class="btn-del">X</button></form>{{end}}</td></tr>
-            {{end}}
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Registro de Eventos</h2>
-      <div style="max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.1); border-radius: 12px; padding: 12px; font-family: ui-monospace, monospace; font-size: 12px">
-        {{range .Events}}
-        <div style="margin-bottom:6px; line-height: 1.4"><span style="color:#71717a">{{.Timestamp}}</span> <span style="color:#818cf8; font-weight: bold">[{{.Performer}}]</span> {{.Message}}</div>
-        {{end}}
-      </div>
     </div>
 
     <datalist id="domain-suggestions">{{range .HostSuggestions}}<option value="{{.}}">{{end}}</datalist>
@@ -286,9 +155,13 @@
         const r = document.getElementById("row-"+h);
         const v = r.querySelectorAll(".view-mode"), e = r.querySelectorAll(".edit-mode"), b = r.querySelector(".btn-edit");
         if (b.innerText === "Editar") {
-          v.forEach(x => x.style.display = "none"); e.forEach(x => x.style.display = "block"); b.innerText = "Guardar";
+          v.forEach(x => x.style.display = "none");
+          e.forEach(x => {
+            x.style.display = (x.tagName === "DIV") ? "flex" : "block";
+          });
+          b.innerText = "Guardar";
         } else {
-          const nh = e[0].value, nt = e[1].value;
+          const nh = e[1].value, nt = e[3].value; // Ajuste de índices por los inputs ocultos
           const f = document.createElement("form"); f.method = "POST";
           const a = (n, v) => { const i = document.createElement("input"); i.type="hidden"; i.name=n; i.value=v; f.appendChild(i); };
           a("accion", "update_service"); a("old_host", h); a("host", nh); a("target", nt); a("csrf_token", "{{.CSRFToken}}");
