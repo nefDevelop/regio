@@ -99,6 +99,27 @@ func handleCLI() {
 		}
 		fmt.Printf("✅ Servicio eliminado: %s\n", *host)
 		os.Exit(0)
+
+	case "rotate-key":
+		rotateCmd := flag.NewFlagSet("rotate-key", flag.ExitOnError)
+		oldKey := rotateCmd.String("old", "", "MASTER_KEY actual")
+		newKey := rotateCmd.String("new", "", "Nueva MASTER_KEY deseada")
+		rotateCmd.Parse(os.Args[2:])
+
+		if *oldKey == "" || *newKey == "" {
+			fmt.Println("✕ Error: --old y --new son obligatorios")
+			rotateCmd.Usage()
+			os.Exit(1)
+		}
+
+		fmt.Println("⏳ Rotando MASTER_KEY y re-cifrando secretos...")
+		count, err := auth.RotateMasterKey(*oldKey, *newKey)
+		if err != nil {
+			log.Fatalf("✕ ERROR FATAL durante la rotación: %v", err)
+		}
+		fmt.Printf("✅ Rotación completada con éxito. %d secretos re-cifrados.\n", count)
+		fmt.Println("⚠️  IMPORTANTE: Actualiza ahora tu archivo .env con la nueva MASTER_KEY y reinicia el contenedor.")
+		os.Exit(0)
 	}
 }
 

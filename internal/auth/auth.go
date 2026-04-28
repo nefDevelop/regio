@@ -178,8 +178,12 @@ func UpdateEncryptionKey(newKeyRaw string) {
 
 // RotateMasterKey re-cifra todos los secretos TOTP con una nueva clave maestra.
 // Debe llamarse con la clave antigua activa en encryptionKey.
-func RotateMasterKey(newKeyRaw string) (int, error) {
-	// 1. Leer todos los secretos cifrados con la clave actual
+// RotateMasterKey re-cifra todos los secretos TOTP usando una nueva clave maestra.
+func RotateMasterKey(oldKeyRaw, newKeyRaw string) (int, error) {
+	// 1. Validar la clave antigua configurándola temporalmente
+	UpdateEncryptionKey(oldKeyRaw)
+
+	// 2. Leer todos los secretos y probar a descifrarlos
 	rows, err := db.DB.Query("SELECT id, COALESCE(totp_secret, '') FROM users WHERE totp_secret IS NOT NULL AND totp_secret != ''")
 	if err != nil {
 		return 0, fmt.Errorf("error leyendo usuarios: %v", err)
@@ -201,15 +205,15 @@ func RotateMasterKey(newKeyRaw string) (int, error) {
 		}
 		plaintext, err := Decrypt(encrypted)
 		if err != nil {
-			return 0, fmt.Errorf("error descifrando secreto del usuario %d: %v", id, err)
+			return 0, fmt.Errorf("error descifrando secreto del usuario %d (¿clave antigua incorrecta?): %v", id, err)
 		}
 		secrets = append(secrets, secretPair{id: id, plaintext: plaintext})
 	}
 
-	// 2. Cambiar a la nueva clave
+	// 3. Cambiar a la nueva clave
 	UpdateEncryptionKey(newKeyRaw)
 
-	// 3. Re-cifrar todos los secretos con la nueva clave
+	// 4. Re-cifrar todos los secretos con la nueva clave
 	count := 0
 	for _, s := range secrets {
 		newEncrypted, err := Encrypt(s.plaintext)
@@ -218,6 +222,8 @@ func RotateMasterKey(newKeyRaw string) (int, error) {
 		}
 		_, err = db.DB.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", newEncrypted, s.id)
 		if err != nil {
+			// Intento desesperado de volver a la clave vieja si falla la DB? 
+			// No, mejor loguear el fallo crítico.
 			return count, fmt.Errorf("error guardando secreto re-cifrado del usuario %d: %v", s.id, err)
 		}
 		count++
