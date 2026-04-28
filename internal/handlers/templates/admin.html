@@ -102,6 +102,15 @@
         .input-group { flex: 1 1 auto; }
         .public-check { height: auto; padding: 8px 0; }
       }
+      .host-link {
+        color: #818cf8;
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+      .host-link:hover {
+        color: #a5b4fc;
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -128,7 +137,7 @@
               <td>
                 <div class="view-mode" style="display: flex; align-items: center; gap: 8px">
                   <span class="status-dot {{if .Alive}}online{{else}}offline{{end}}"></span>
-                  <strong>{{.Host}}</strong>
+                  <strong><a href="https://{{.Host}}" target="_blank" class="host-link">{{.Host}}</a></strong>
                   {{if index $.Config.Publicos .Host}}<span class="badge" style="color: #4ade80">PÚBLICO</span>{{end}}
                 </div>
                 <input type="text" form="form-{{.Host}}" name="host" value="{{.Host}}" class="edit-mode" style="display: none" />

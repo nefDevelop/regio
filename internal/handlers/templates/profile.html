@@ -44,6 +44,15 @@
       .header > div { width: 100%; justify-content: space-between; }
       .section { padding: 16px !important; }
     }
+      .host-link {
+        color: #818cf8;
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+      .host-link:hover {
+        color: #a5b4fc;
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body class="profile-view">
@@ -227,7 +236,7 @@
           {{range .BypassKeys}}
           <tr>
             <td style="font-weight: 600; color: #fbbf24">{{.Name}}</td>
-            <td><code>{{.Host}}</code></td>
+            <td><code><a href="https://{{.Host}}" target="_blank" class="host-link">{{.Host}}</a></code></td>
             <td><code style="font-size: 0.9em; opacity: 0.7">{{.Token}}</code></td>
             <td style="text-align: right">
               <form method="POST" style="display: inline; margin: 0">

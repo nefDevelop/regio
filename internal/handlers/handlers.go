@@ -351,7 +351,8 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		accion := r.FormValue("accion")
-		if accion == "add_service" {
+		switch accion {
+		case "add_service":
 			host := r.FormValue("host")
 			target := r.FormValue("target")
 			if host != "" && target != "" {
@@ -387,7 +388,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s (Público: %v)", host, target, Config.Publicos[host]), user.Username)
 			}
-		} else if accion == "update_service" {
+		case "update_service":
 			host := r.FormValue("old_host")
 			newHost := r.FormValue("host")
 			target := r.FormValue("target")
@@ -416,7 +417,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target), user.Username)
 			}
-		} else if accion == "delete_service" {
+		case "delete_service":
 			host := r.FormValue("host")
 			Mu.Lock()
 			delete(Config.Servicios, host)
@@ -425,7 +426,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.SaveConfig(Config)
 			Mu.Unlock()
 			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
-		} else if accion == "add_bypass_key" {
+		case "add_bypass_key":
 			token := r.FormValue("token")
 			name := r.FormValue("name")
 			host := r.FormValue("host")
@@ -436,12 +437,12 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
 			loadBypassKeys()
 			db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), user.Username)
-		} else if accion == "delete_bypass_key" {
+		case "delete_bypass_key":
 			token := r.FormValue("token")
 			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
 			loadBypassKeys()
 			db.LogEvent(fmt.Sprintf("🔑 Bypass key eliminada: %s", token), user.Username)
-		} else if accion == "add_user" {
+		case "add_user":
 			newUser := r.FormValue("new_user")
 			if newUser != "" {
 				totp := auth.GenerateTOTPSecret()
@@ -452,7 +453,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				inviteURL := fmt.Sprintf("https://%s/REGIO-login?invite=%s", AdminDomain, inviteToken)
 				db.LogEvent(fmt.Sprintf("⚇ Usuario creado: %s. URL de invitación: %s", newUser, inviteURL), user.Username)
 			}
-		} else if accion == "delete_user" {
+		case "delete_user":
 			delUser := r.FormValue("del_user")
 			var idToDelete int
 			db.DB.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
@@ -460,7 +461,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				db.DB.Exec("DELETE FROM users WHERE username = ?", delUser)
 				db.LogEvent(fmt.Sprintf("⚇ Usuario eliminado: %s", delUser), user.Username)
 			}
-		} else if accion == "ban_ip" {
+		case "ban_ip":
 			targetIP := r.FormValue("target_ip")
 			if targetIP != "" {
 				hasta := time.Now().Add(365 * 24 * time.Hour)
@@ -470,11 +471,11 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				db.DB.Exec("INSERT OR REPLACE INTO banned_ips (ip, hasta, razon) VALUES (?, ?, ?)", targetIP, hasta, "Bloqueo manual del administrador")
 				db.LogEvent(fmt.Sprintf("⊘ IP/Rango bloqueado manualmente: %s", targetIP), user.Username)
 			}
-		} else if accion == "unban_ip" {
+		case "unban_ip":
 			targetIP := r.FormValue("target_ip")
 			UnbanIP(targetIP)
 			db.LogEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP), user.Username)
-		} else if accion == "revoke_session" {
+		case "revoke_session":
 			tokenToRevoke := r.FormValue("token")
 			Mu.Lock()
 			delete(ActiveSessions, tokenToRevoke)
