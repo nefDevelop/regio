@@ -20,17 +20,28 @@
       .public-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); cursor: pointer; height: 44px; padding-top: 20px; }
       .btn-create-bridge { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; padding: 0 32px; height: 44px; border-radius: 12px; font-weight: 700; }
       @media (max-width: 768px) { .bridge-form-flex { flex-direction: column; align-items: stretch; } }
+      
+      /* Ajuste para el botón salir enorme a la izquierda */
+      .header { display: flex; align-items: center; justify-content: space-between; flex-direction: row-reverse; }
+      .btn-logout-big {
+        height: 54px !important;
+        padding: 0 40px !important;
+        font-size: 16px !important;
+        background: rgba(239, 68, 68, 0.15) !important;
+        color: #fca5a5 !important;
+        border: 1px solid rgba(239, 68, 68, 0.3) !important;
+      }
     </style>
   </head>
   <body class="admin-view">
     <div class="header">
-      <h1 style="display:flex; align-items:center; font-size: 24px;">
-        <img src="/static/reGIO.svg" alt="logo" style="height: 32px; margin-right: 12px; filter: invert(1)" />reGIO Admin
-      </h1>
-      <div style="display: flex; align-items: center; gap: 12px">
-        <a href="/profile" class="btn-primary" style="height:38px; font-size:13px">Mi Perfil</a>
-        <a href="/logout" class="btn-logout" style="height:38px; font-size:13px; padding: 0 16px">Salir</a>
+      <div style="display: flex; align-items: center; gap: 16px">
+         <h1 style="display:flex; align-items:center; font-size: 24px; margin: 0">
+          <img src="/static/reGIO.svg" alt="logo" style="height: 32px; margin-right: 12px; filter: invert(1)" />reGIO Admin
+        </h1>
+        <a href="/profile" class="btn-primary" style="height:44px">Mi Perfil</a>
       </div>
+      <a href="/logout" class="btn-logout btn-logout-big">SALIR</a>
     </div>
 
     <div class="section">
@@ -63,7 +74,7 @@
                   <form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="delete_service"/><input type="hidden" name="host" value="{{.Host}}"/><button class="btn-del">Borrar</button></form>
                 </div>
                 <div class="edit-mode" style="display: none; gap: 8px; align-items: center">
-                  <form id="form-{{.Host}}" method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="update_service"/><input type="hidden" name="old_host" value="{{.Host}}"/><button class="btn-success" style="height: 32px; padding: 0 12px; font-size: 12px">OK</button></form>
+                  <form id="form-{{.Host}}" method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="update_service"/><input type="hidden" name="old_host" value="{{.Host}}"/><button class="btn-success" style="height: 32px; padding: 0 16px; font-size: 12px">OK</button></form>
                   <button class="btn-logout" onclick="toggleEdit('{{.Host}}')" style="height: 32px; padding: 0 10px; font-size: 12px">X</button>
                 </div>
               </td>
@@ -124,7 +135,7 @@
           {{range .Users}}
           <tr>
             <td style="font-size: 14px">{{.Username}} {{if .IsAdmin}}<span class="badge" style="color:#818cf8; background:rgba(99,102,241,0.1)">Admin</span>{{end}}</td>
-            <td>{{if .TotpActive}}<span class="badge" style="color:#34d399; background:rgba(16,185,129,0.1)">SÍ</span>{{else}}<span class="badge">NO</span>{{end}}</td>
+            <td>{{if .TotpActive}}<span class="badge" style="color:#34d399; background:rgba(16,185,129,0.1)">SÍ</span>{{else}}<span class="badge" style="background:rgba(255,255,255,0.05)">NO</span>{{end}}</td>
             <td>
               {{if ne .ID 1}}
               <form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="delete_user"/><input type="hidden" name="del_user" value="{{.Username}}"/><button class="btn-del">Borrar</button></form>
@@ -141,6 +152,41 @@
       </form>
     </div>
 
+    <div class="section">
+      <h2>Seguridad & Sesiones</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px">
+        <div>
+          <h3>IPs Bloqueadas (Fail2Ban)</h3>
+          <table>
+            <thead><tr><th>IP / Rango</th><th>Expiración</th><th>Acción</th></tr></thead>
+            <tbody>
+              {{range .BannedIPs}}
+              <tr><td style="color:#ef4444">{{.Target}}</td><td>{{.Hasta}}</td><td><form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="unban_ip"/><input type="hidden" name="target_ip" value="{{.Target}}"/><button class="btn-primary" style="height:32px; padding:0 12px">Liberar</button></form></td></tr>
+              {{end}}
+            </tbody>
+          </table>
+          <form method="POST" style="display:flex; gap:12px; margin-top:16px"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"/><input type="hidden" name="accion" value="ban_ip"/><input type="text" name="target_ip" placeholder="IP a bloquear" required style="flex:1" /><button class="btn-del">Bloquear</button></form>
+        </div>
+        <div>
+          <h3>Sesiones Activas</h3>
+          <table>
+            {{range .AllSessions}}
+            <tr><td><strong>{{.Username}}</strong></td><td>{{.IP}}</td><td>{{if not .IsCurrent}}<form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="revoke_session"/><input type="hidden" name="token" value="{{.Token}}"/><button class="btn-del" style="height:32px; width:32px; padding:0">X</button></form>{{end}}</td></tr>
+            {{end}}
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Registro de Eventos</h2>
+      <div style="max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.1); border-radius: 12px; padding: 12px; font-family: ui-monospace, monospace; font-size: 12px">
+        {{range .Events}}
+        <div style="margin-bottom:6px; line-height: 1.4"><span style="color:#71717a">{{.Timestamp}}</span> <span style="color:#818cf8; font-weight: bold">[{{.Performer}}]</span> {{.Message}}</div>
+        {{end}}
+      </div>
+    </div>
+
     <datalist id="domain-suggestions">{{range .HostSuggestions}}<option value="{{.}}">{{end}}</datalist>
     <datalist id="target-suggestions">{{range .TargetSuggestions}}<option value="{{.}}">{{end}}</datalist>
 
@@ -153,15 +199,18 @@
       }
       function toggleEdit(h) {
         const r = document.getElementById("row-"+h);
-        const v = r.querySelectorAll(".view-mode"), e = r.querySelectorAll(".edit-mode"), b = r.querySelector(".btn-edit");
+        const v = r.querySelectorAll(".view-mode"), b = r.querySelector(".btn-edit");
+        // Seleccionar solo inputs que no sean hidden para evitar errores de índice
+        const e = r.querySelectorAll("input.edit-mode");
+        
         if (b.innerText === "Editar") {
           v.forEach(x => x.style.display = "none");
-          e.forEach(x => {
-            x.style.display = (x.tagName === "DIV") ? "flex" : "block";
-          });
+          e.forEach(x => x.style.display = "block");
+          r.querySelector("div.edit-mode").style.display = "flex";
           b.innerText = "Guardar";
         } else {
-          const nh = e[1].value, nt = e[3].value; // Ajuste de índices por los inputs ocultos
+          // El primer input visible es host, el segundo es target
+          const nh = e[0].value, nt = e[1].value;
           const f = document.createElement("form"); f.method = "POST";
           const a = (n, v) => { const i = document.createElement("input"); i.type="hidden"; i.name=n; i.value=v; f.appendChild(i); };
           a("accion", "update_service"); a("old_host", h); a("host", nh); a("target", nt); a("csrf_token", "{{.CSRFToken}}");
