@@ -373,9 +373,17 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 
 				Config.Servicios[host] = target
 				Config.Publicos[host] = r.FormValue("public") == "on"
-				Config.BypassHeaders[host] = r.FormValue("bypass")
+				
+				// Gestión de Bypass Key integrada
+				bypassName := r.FormValue("bypass_name")
+				bypassToken := r.FormValue("bypass_token")
+				if bypassName != "" && bypassToken != "" {
+					db.DB.Exec("INSERT OR REPLACE INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", bypassToken, bypassName, host)
+					db.LogEvent(fmt.Sprintf("🔑 Bypass key creada automáticamente para: %s (%s)", host, bypassName), user.Username)
+				}
 
 				db.SaveConfig(Config)
+				loadBypassKeys() // Recargar llaves en memoria
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s (Público: %v)", host, target, Config.Publicos[host]), user.Username)
 			}

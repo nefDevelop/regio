@@ -210,17 +210,8 @@
         </svg>
         API Keys de Servicio (Bypass)
       </h3>
-      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px">Llaves que saltan la autenticación para un host específico.</p>
+      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px">Llaves que saltan la autenticación para un host específico. Para crear una nueva, ve al panel de administración.</p>
       
-      <form method="POST" style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap; justify-content: center">
-        <input type="hidden" name="accion" value="add_bypass_key" />
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-        <input type="text" name="name" placeholder="Identidad (ej: UptimeRobot)" required style="flex-grow: 1; max-width: 200px; margin: 0" />
-        <input type="text" name="host" placeholder="Servicio (ej: api.ejemplo.com)" required style="flex-grow: 1; max-width: 200px; margin: 0" />
-        <input type="text" name="token" placeholder="Token" required style="flex-grow: 1; max-width: 200px; margin: 0" />
-        <button class="btn-add compact" style="margin: 0; width: auto; padding: 0 24px; background: #fbbf24; color: #000">Crear</button>
-      </form>
-
       {{if .BypassKeys}}
       <div style="width: 100%; overflow-x: auto;">
       <table>
