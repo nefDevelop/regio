@@ -8,14 +8,32 @@
 
 - **Autenticación Blindada:** Sistema de sesiones persistentes con protección CSRF global.
 - **Soporte para 2FA (TOTP):** Autenticación en dos pasos con secretos cifrados en reposo (AES-256-GCM).
-- **Anti-Fuerza Bruta (Fail2Ban):** Bloqueo automático de IPs y rangos de red (/24 o /64) tras intentos fallidos.
-- **Validación de Proxies de Confianza:** Prevención de suplantación de identidad (Spoofing) mediante la validación de IPs de confianza (vía `TRUSTED_PROXIES`).
-- **Protección SSRF Avanzada:** Bloqueo estricto de accesos a IPs privadas (RFC 1918) y loopback desde el proxy.
-- **App Tokens Seguros:** Gestión de tokens para APIs con haseo SHA-256 y auditoría de uso.
-- **Invitaciones Seguras:** Los nuevos usuarios requieren un token único de un solo uso para establecer su contraseña.
-- **DoS Mitigation:** Timeouts estrictos en la comunicación con backends para garantizar la estabilidad.
-- **Docker Ready:** Imagen ultra-ligera (< 15MB) basada en Alpine Linux.
+- **Anti-Botnets (Rate-Limit por Usuario):** Bloqueo de cuentas tras múltiples intentos fallidos, incluso si el atacante usa múltiples IPs distribuidas.
+- **Fail2Ban de Red:** Bloqueo automático de IPs y rangos (/24 o /64) para mitigar ataques coordinados.
+- **Protección contra DNS Rebinding (TOCTOU):** Validación DNS en tiempo real en el `DialContext` del proxy para evitar el bypass de IPs privadas.
+- **Configuración en DB & CLI:** La configuración de servicios reside en SQLite y se puede gestionar mediante una potente interfaz de línea de comandos.
+- **Seguridad en Repositorio:** Ejecución como usuario no-root (`regio:1000`) y configuración con permisos restringidos.
+- **Tests de Seguridad Integrados:** Suite de tests que valida protecciones contra SSRF, CSRF y Bypass.
 
+---
+
+## Gestión por Consola (CLI)
+
+Puedes gestionar tus servicios sin entrar a la web:
+```bash
+./REGIO list                           # Ver servicios
+./REGIO add --host app.io --target http://10.0.0.1:80 # Añadir
+./REGIO del --host app.io              # Eliminar
+```
+
+---
+
+## Ejecución de Tests de Seguridad
+
+Para validar las protecciones en tu entorno:
+```bash
+make test
+```
 ---
 
 ## Instalación y Despliegue
