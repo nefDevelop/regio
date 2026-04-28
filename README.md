@@ -1,6 +1,13 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="reGIO Logo" width="120">
+</p>
+
 # reGIO: Reverse Proxy Seguro con Panel de Administración
 
-**reGIO** es un proxy inverso blindado y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels (probado en el) en Tailscale Funnel o entornos de red privada tambien deberia funcionar.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/nef734/regio)](https://golang.org/)
+
+**reGIO** es un proxy inverso blindado y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o entornos de red privada.
 
 ---
 

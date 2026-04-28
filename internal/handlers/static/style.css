@@ -196,12 +196,15 @@ h3 {
 }
 
 /* FORMS & INPUTS */
-input {
+input, select {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  border-radius: 14px;
+  border-radius: 12px; /* Smoother radius */
   box-sizing: border-box;
+  height: 44px; /* Fixed height for inputs */
+  padding: 0 16px;
+  font-size: 14px;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -212,23 +215,20 @@ input::placeholder {
 input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px var(--primary-glow);
+  box-shadow: 0 0 0 3px var(--primary-glow);
   background: rgba(0, 0, 0, 0.6);
-  transform: translateY(-1px);
 }
 
 .flex-center input {
   width: 100%;
-  padding: 16px;
   margin: 8px 0 16px 0;
+  height: 50px; /* Slightly larger for login/setup */
   font-size: 15px;
 }
 
 .admin-view input {
-  padding: 14px 18px;
-  margin-right: 12px;
-  margin-bottom: 12px;
-  font-size: 14px;
+  margin-right: 8px;
+  margin-bottom: 8px;
   width: auto;
 }
 
@@ -237,9 +237,7 @@ input:focus {
 .profile-view button.btn-del:not(.compact) {
   width: 100%;
   max-width: 400px;
-  padding: 14px 16px;
   margin-bottom: 16px;
-  font-size: 16px;
   text-align: center;
 }
 
@@ -263,7 +261,8 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 24px;
+  height: 44px; /* Matched with inputs */
+  padding: 0 24px;
   border-radius: 12px;
   font-size: 14px;
   text-decoration: none;

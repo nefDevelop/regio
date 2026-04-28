@@ -1,0 +1,27 @@
+name: Go CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Test
+        env:
+          MASTER_KEY: test-master-key-32-bytes-length-!!!
+        run: go test -v ./...

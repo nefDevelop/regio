@@ -12,14 +12,14 @@
       }
       .add-bridge-card {
         margin-top: 32px;
-        padding: 24px;
+        padding: 32px;
         background: rgba(15, 23, 42, 0.4);
         border-radius: 20px;
         border: 1px solid rgba(255, 255, 255, 0.05);
         box-sizing: border-box;
       }
       .add-bridge-card h3 {
-        margin: 0 0 20px 0;
+        margin: 0 0 24px 0;
         font-size: 15px;
         color: #818cf8;
         text-transform: uppercase;
@@ -34,9 +34,9 @@
       .input-group {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
         flex: 1 1 200px;
-        min-width: 0; /* Permite que el flex-item se encoja */
+        min-width: 0;
       }
       .input-group.small {
         flex: 1 1 150px;
@@ -48,48 +48,56 @@
         flex: 0 0 auto;
       }
       .input-group label {
-        font-size: 10px;
-        font-weight: 800;
-        color: #475569;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
       .input-group input {
         width: 100%;
-        box-sizing: border-box;
       }
       .token-field {
         display: flex;
-        gap: 4px;
+        gap: 8px;
         width: 100%;
       }
       .btn-gen-token {
         background: rgba(99, 102, 241, 0.1);
         border: 1px solid rgba(99, 102, 241, 0.2);
         color: #818cf8;
-        padding: 0 12px;
-        border-radius: 8px;
+        padding: 0 16px;
+        border-radius: 12px;
+        height: 44px;
         cursor: pointer;
         transition: all 0.2s;
+        font-weight: 600;
+        font-size: 13px;
       }
       .btn-gen-token:hover { background: var(--primary-indigo); color: white; }
       
       .public-check {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        color: #94a3b8;
+        gap: 10px;
+        font-size: 14px;
+        color: var(--text-muted);
         cursor: pointer;
-        height: 42px; /* Alineado con los inputs */
-        padding: 0 4px;
+        height: 44px; /* Alineado con los inputs */
+        padding: 0 8px;
       }
+      .public-check input {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+      }
+      
       .btn-create-bridge {
         background: var(--primary-indigo);
         color: white;
         border: none;
-        padding: 0 28px;
-        height: 42px;
+        padding: 0 32px;
+        height: 44px;
         border-radius: 12px;
         font-weight: 700;
         cursor: pointer;
@@ -100,7 +108,7 @@
       @media (max-width: 768px) {
         .bridge-form-flex { flex-direction: column; align-items: stretch; }
         .input-group { flex: 1 1 auto; }
-        .public-check { height: auto; padding: 8px 0; }
+        .public-check { height: auto; padding: 12px 0; }
       }
       .host-link {
         color: #818cf8;
@@ -115,10 +123,10 @@
   </head>
   <body class="admin-view">
     <div class="header">
-      <h1><img src="/static/reGIO.svg" alt="logo" style="height: 36px; margin-right: 12px; filter: invert(1)" />reGIO Admin</h1>
+      <h1><img src="/static/reGIO.svg" alt="logo" style="height: 40px; margin-right: 16px; filter: invert(1)" />reGIO Admin</h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <a href="/profile" class="btn-logout btn-primary" style="border: none">Mi Perfil</a>
-        <a href="/logout" class="btn-del" style="padding: 12px; border-radius: 12px">Salir</a>
+        <a href="/profile" class="btn-primary">Mi Perfil</a>
+        <a href="/logout" class="btn-del" style="height: 44px; padding: 0 20px; border-radius: 12px">Salir</a>
       </div>
     </div>
 
