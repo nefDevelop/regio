@@ -742,13 +742,24 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var rawTokens []models.AppToken
-	rows, _ := db.DB.Query("SELECT id, name, last_used, datetime(created_at, 'localtime') FROM app_tokens WHERE user_id = ?", u.ID)
+	var appTokens []models.AppToken
+	rows, _ := db.DB.Query("SELECT id, name, last_used, created_at FROM app_tokens WHERE user_id = ?", u.ID)
 	defer rows.Close()
 	for rows.Next() {
 		var t models.AppToken
 		rows.Scan(&t.ID, &t.Name, &t.LastUsed, &t.CreatedAt)
-		rawTokens = append(rawTokens, t)
+		appTokens = append(appTokens, t)
+	}
+
+	var bypassKeys []models.BypassKey
+	if u.IsAdmin {
+		rowsB, _ := db.DB.Query("SELECT token, name, host, created_at FROM bypass_keys")
+		defer rowsB.Close()
+		for rowsB.Next() {
+			var k models.BypassKey
+			rowsB.Scan(&k.Token, &k.Name, &k.Host, &k.CreatedAt)
+			bypassKeys = append(bypassKeys, k)
+		}
 	}
 
 	otpUrl := fmt.Sprintf("otpauth://totp/reGIO:%%20%s?secret=%s&issuer=reGIO", u.Username, u.TotpSecret)
@@ -778,7 +789,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 		LastUsedRel string
 	}
 	var displayTokens []TokenDisplay
-	for _, t := range rawTokens {
+	for _, t := range appTokens {
 		displayTokens = append(displayTokens, TokenDisplay{
 			AppToken:    t,
 			LastUsedRel: RelTime(t.LastUsed.Time),
@@ -786,14 +797,15 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Tmpls.ExecuteTemplate(w, "profile.html", struct {
-		User      models.User
-		OtpUrl    string
-		Error     bool
-		Tokens    []TokenDisplay
-		NewToken  string
-		CSRFToken string
-		Sessions  []SessionDisplay
-	}{u, otpUrl, errorMsg, displayTokens, newToken, userSession.CSRFToken, sessions})
+		User       models.User
+		OtpUrl     string
+		Error      bool
+		Tokens     []TokenDisplay
+		BypassKeys []models.BypassKey
+		NewToken   string
+		CSRFToken  string
+		Sessions   []SessionDisplay
+	}{u, otpUrl, errorMsg, displayTokens, bypassKeys, newToken, userSession.CSRFToken, sessions})
 }
 
 func HandleSetup(w http.ResponseWriter, r *http.Request) {

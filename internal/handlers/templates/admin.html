@@ -544,7 +544,7 @@
 
           <div style="display: flex; gap: 8px; flex: 3; min-width: 300px">
             <input type="text" name="token" id="new-api-token" placeholder="Pulsa generar..." readonly style="flex: 1; background: rgba(0,0,0,0.4); color: #fbbf24" required />
-            <button type="button" class="btn-primary" onclick="generateKey()">Generar</button>
+            <button type="button" class="btn-primary" id="btn-generate-bypass" onclick="generateKey()">Generar</button>
           </div>
 
           <button type="submit" class="btn-success">Activar Key</button>
@@ -608,25 +608,33 @@
     </div>
 
     <script>
-      function generateKey() {
+      function checkBypassInputs() {
+        const nameVal = document.querySelector('input[name="name"]').value;
+        const hostVal = document.querySelector('select[name="host"]').value;
+        const genBtn = document.getElementById('btn-generate-bypass');
+        genBtn.disabled = !(nameVal && hostVal);
+        genBtn.style.opacity = genBtn.disabled ? "0.5" : "1";
+        genBtn.style.cursor = genBtn.disabled ? "not-allowed" : "pointer";
+      }
+
+      // Añadir listeners para validación en tiempo real
+      document.addEventListener('DOMContentLoaded', () => {
         const nameInp = document.querySelector('input[name="name"]');
         const hostInp = document.querySelector('select[name="host"]');
-        
-        if (!nameInp.value || !hostInp.value) {
-          alert("⚠️ Por favor, rellena primero el Nombre y selecciona un Servicio (Host).");
-          return;
+        if (nameInp && hostInp) {
+          nameInp.addEventListener('input', checkBypassInputs);
+          hostInp.addEventListener('change', checkBypassInputs);
+          checkBypassInputs(); // Estado inicial
         }
+      });
 
+      function generateKey() {
         const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let retVal = "rgbp_";
         for (let i = 0; i < 32; ++i) {
           retVal += charset.charAt(Math.floor(Math.random() * charset.length));
         }
-        
-        const tokenInp = document.getElementById('new-api-token');
-        tokenInp.value = retVal;
-        
-        console.log("Generada API Key para " + nameInp.value + " vinculada a " + hostInp.value);
+        document.getElementById('new-api-token').value = retVal;
       }
 
       function toggleEdit(host) {

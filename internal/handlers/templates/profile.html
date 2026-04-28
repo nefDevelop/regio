@@ -202,6 +202,40 @@
         No tienes tokens activos.
       </p>
       {{end}}
+
+      {{if .BypassKeys}}
+      <h3 style="margin-top: 48px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 32px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px; color: #fbbf24">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3y-3.5"></path>
+        </svg>
+        API Keys de Servicio (Bypass)
+      </h3>
+      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px">Llaves que saltan la autenticación para un host específico.</p>
+      
+      <div style="width: 100%; overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Identidad</th>
+            <th>Servicio</th>
+            <th>Token</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .BypassKeys}}
+          <tr>
+            <td style="font-weight: 600; color: #fbbf24">{{.Name}}</td>
+            <td><code>{{.Host}}</code></td>
+            <td><code style="font-size: 0.9em; opacity: 0.7">{{.Token}}</code></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      </div>
+      <p style="font-size: 11px; color: var(--text-dim); margin-top: 12px; text-align: center">
+        * Para gestionar o eliminar estas llaves, ve al panel de <a href="/admin" style="color: #818cf8">Administración</a>.
+      </p>
+      {{end}}
     </div>
 
     <div class="section">
