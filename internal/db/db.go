@@ -102,6 +102,19 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla servicios:", err)
 	}
+
+	// Nueva tabla de API Keys para Bypass
+	createBypassKeysTable := `
+	CREATE TABLE IF NOT EXISTS bypass_keys (
+		token TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		host TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, err = DB.Exec(createBypassKeysTable)
+	if err != nil {
+		log.Fatal("Error creando tabla bypass_keys:", err)
+	}
 }
 
 func CheckNeedsSetup() bool {
@@ -192,6 +205,17 @@ func AddService(host, target string, isPublic bool, bypass string) error {
 
 func DeleteService(host string) error {
 	_, err := DB.Exec("DELETE FROM servicios WHERE host = ?", host)
+	return err
+}
+
+// Funciones para Gestión de Bypass Keys
+func AddBypassKey(token, name, host string) error {
+	_, err := DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
+	return err
+}
+
+func DeleteBypassKey(token string) error {
+	_, err := DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
 	return err
 }
 

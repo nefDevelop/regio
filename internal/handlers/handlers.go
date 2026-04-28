@@ -31,16 +31,18 @@ var templateFiles embed.FS
 var staticFiles embed.FS
 
 var (
-	ActiveSessions = make(map[string]*models.User)
-	IntentosDB     = make(map[string]*models.Intento)
-	Mu             sync.Mutex
-	Config         models.Config
-	NeedsSetup     bool
-	AdminDomain    string
-	SessionKey     = "REGIO_session"
-	Tmpls          *template.Template
-	TrustedProxies []string
-	AllowLoopback  bool // Solo para pruebas
+	ActiveSessions  = make(map[string]*models.User)
+	IntentosDB      = make(map[string]*models.Intento)
+	IntentosUsuario = make(map[string]*models.Intento)
+	BypassKeys      = make(map[string]models.BypassKey)
+	Mu              sync.Mutex
+	Config          models.Config
+	NeedsSetup      bool
+	AdminDomain     string
+	SessionKey      = "REGIO_session"
+	Tmpls           *template.Template
+	TrustedProxies  []string
+	AllowLoopback   bool // Solo para pruebas
 	// Transport personalizado para el proxy con validación DNS anti-rebinding (MED-04)
 	proxyTransport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -109,8 +111,26 @@ func Init() {
 		}
 	}
 
+	loadBypassKeys()
 	InitSecurity()
 	LoadSessions()
+}
+
+func loadBypassKeys() {
+	rows, err := db.DB.Query("SELECT token, name, host FROM bypass_keys")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	Mu.Lock()
+	defer Mu.Unlock()
+	for rows.Next() {
+		var k models.BypassKey
+		if err := rows.Scan(&k.Token, &k.Name, &k.Host); err == nil {
+			BypassKeys[k.Token] = k
+		}
+	}
 }
 
 func isTrustedProxy(ip string) bool {
@@ -397,6 +417,20 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.SaveConfig(Config)
 			Mu.Unlock()
 			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
+		} else if accion == "add_bypass_key" {
+			token := r.FormValue("token")
+			name := r.FormValue("name")
+			host := r.FormValue("host")
+			if token != "" && name != "" && host != "" {
+				db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
+				loadBypassKeys()
+				db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), user.Username)
+			}
+		} else if accion == "delete_bypass_key" {
+			token := r.FormValue("token")
+			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
+			loadBypassKeys()
+			db.LogEvent(fmt.Sprintf("🔑 Bypass key eliminada: %s", token), user.Username)
 		} else if accion == "add_user" {
 			newUser := r.FormValue("new_user")
 			if newUser != "" {
@@ -449,6 +483,15 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		var u models.User
 		rows.Scan(&u.ID, &u.Username, &u.TotpSecret, &u.IsAdmin, &u.TotpActive)
 		users = append(users, u)
+	}
+
+	var bypassList []models.BypassKey
+	rowsB, _ := db.DB.Query("SELECT token, name, host FROM bypass_keys")
+	defer rowsB.Close()
+	for rowsB.Next() {
+		var k models.BypassKey
+		rowsB.Scan(&k.Token, &k.Name, &k.Host)
+		bypassList = append(bypassList, k)
 	}
 
 	var bannedList []models.BannedIP
@@ -557,6 +600,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Config            models.Config
 		Users             []models.User
+		BypassKeys        []models.BypassKey
 		CSRFToken         string
 		BannedIPs         []models.BannedIP
 		Events            []models.Event
@@ -567,6 +611,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	}{
 		Config:            Config,
 		Users:             users,
+		BypassKeys:        bypassList,
 		CSRFToken:         user.CSRFToken,
 		BannedIPs:         bannedList,
 		Events:            events,
@@ -915,9 +960,25 @@ func (w *statusWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+func ProxyHandler(w http.ResponseWriter, r *http.Request) {
+	Mu.Lock()
+	target, ok := Config.Servicios[r.Host]
+	Mu.Unlock()
+	if !ok {
+		http.Error(w, "Dominio no configurado", http.StatusNotFound)
+		return
+	}
+	remote, _ := url.Parse(target)
+	proxy := httputil.NewSingleHostReverseProxy(remote)
+	proxy.Transport = proxyTransport
+	r.URL.Host, r.URL.Scheme = remote.Host, remote.Scheme
+	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
+	r.Host = remote.Host
+	proxy.ServeHTTP(w, r)
+}
+
 func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw := &statusWriter{ResponseWriter: w, status: 200}
-
 	ip := getRealIP(r)
 
 	// Sanitizar URI para logs (eliminar parámetros sensibles)
@@ -927,7 +988,6 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
-		// Solo loguear peticiones no estáticas para evitar DoS de almacenamiento (HIGH-04)
 		if !strings.HasPrefix(r.URL.Path, "/static/") {
 			log.Printf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, logURI, ip, r.Host)
 		}
@@ -997,7 +1057,6 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 				potentialToken := parts[0]
 				user, tokenUsed, validSession = auth.VerifyAppToken(potentialToken)
 				if validSession {
-					// Limpiar path para el backend
 					newPath := "/"
 					if len(parts) > 1 {
 						newPath += parts[1]
@@ -1012,7 +1071,6 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 			if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
 				user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
 				if validSession {
-					// Opcional: limpiar el parámetro de la query para que no llegue al backend
 					q := r.URL.Query()
 					q.Del("api_key")
 					r.URL.RawQuery = q.Encode()
@@ -1038,6 +1096,21 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validSession && r.Host != AdminDomain {
+		// 2. Comprobar Bypass por API Key (Identidad)
+		bypassToken := r.Header.Get("X-REGIO-Bypass")
+		if bypassToken != "" {
+			Mu.Lock()
+			key, exists := BypassKeys[bypassToken]
+			Mu.Unlock()
+
+			if exists && key.Host == r.Host {
+				db.LogEvent(fmt.Sprintf("🔑 Acceso Bypass: %s -> %s", key.Name, r.Host), "API-Key")
+				ProxyHandler(w, r)
+				return
+			}
+		}
+
+		// 3. Comprobar si es un dominio público
 		Mu.Lock()
 		bypass, okBypass := Config.BypassHeaders[r.Host]
 		publico := Config.Publicos[r.Host]

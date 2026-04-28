@@ -45,3 +45,10 @@ type Event struct {
 	Message   string
 	Performer string
 }
+
+type BypassKey struct {
+	Token     string
+	Name      string
+	Host      string
+	CreatedAt string
+}
