@@ -421,11 +421,13 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			token := r.FormValue("token")
 			name := r.FormValue("name")
 			host := r.FormValue("host")
-			if token != "" && name != "" && host != "" {
-				db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
-				loadBypassKeys()
-				db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), user.Username)
+			if token == "" || name == "" || host == "" {
+				http.Error(w, "Todos los campos son obligatorios para crear una Bypass Key", http.StatusBadRequest)
+				return
 			}
+			db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
+			loadBypassKeys()
+			db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), user.Username)
 		} else if accion == "delete_bypass_key" {
 			token := r.FormValue("token")
 			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
@@ -714,15 +716,17 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			return
 		} else if accion == "create_token" {
 			tokenName := r.FormValue("token_name")
-			if tokenName != "" {
-				rawToken := auth.GenerateSessionToken()
-				hash := sha256.Sum256([]byte(rawToken))
-				tokenHash := base64.StdEncoding.EncodeToString(hash[:])
-				_, err := db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", u.ID, tokenName, tokenHash)
-				if err == nil {
-					newToken = rawToken
-					db.LogEvent(fmt.Sprintf("⚿ App Token creado: %s para el usuario: %s", tokenName, u.Username), u.Username)
-				}
+			if tokenName == "" {
+				http.Error(w, "El nombre del token es obligatorio", http.StatusBadRequest)
+				return
+			}
+			rawToken := auth.GenerateSessionToken()
+			hash := sha256.Sum256([]byte(rawToken))
+			tokenHash := base64.StdEncoding.EncodeToString(hash[:])
+			_, err := db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", u.ID, tokenName, tokenHash)
+			if err == nil {
+				newToken = rawToken
+				db.LogEvent(fmt.Sprintf("⚿ App Token creado: %s para el usuario: %s", tokenName, u.Username), u.Username)
 			}
 		} else if accion == "revoke_token" {
 			tokenID := r.FormValue("token_id")
@@ -737,6 +741,26 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			Mu.Unlock()
 			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
 			db.LogEvent(fmt.Sprintf("⊘ Sesión de navegador revocada por el usuario: %s", u.Username), u.Username)
+			http.Redirect(w, r, "/profile", http.StatusSeeOther)
+			return
+		} else if accion == "add_bypass_key" && u.IsAdmin {
+			token := r.FormValue("token")
+			name := r.FormValue("name")
+			host := r.FormValue("host")
+			if token == "" || name == "" || host == "" {
+				http.Error(w, "Todos los campos son obligatorios para crear una Bypass Key", http.StatusBadRequest)
+				return
+			}
+			db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
+			loadBypassKeys()
+			db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), u.Username)
+			http.Redirect(w, r, "/profile", http.StatusSeeOther)
+			return
+		} else if accion == "delete_bypass_key" && u.IsAdmin {
+			token := r.FormValue("token")
+			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
+			loadBypassKeys()
+			db.LogEvent(fmt.Sprintf("🔑 Bypass key eliminada: %s", token), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		}
