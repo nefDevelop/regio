@@ -4,12 +4,15 @@ services:
     container_name: REGIO_seguro
     restart: always
     ports:
-      - "9999:80"
+      - "80:80"
+      - "443:443"
     env_file:
       - .env
     volumes:
       - ./data:/home/regio/data:rw
       - ./static:/home/regio/static:ro
+      # Si usas TLS nativo, mapea tus certificados aquí:
+      # - ./certs:/home/regio/certs:ro
     logging:
       driver: "json-file"
       options:
