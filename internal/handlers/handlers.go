@@ -866,6 +866,11 @@ func RelTime(t time.Time) string {
 }
 
 func isValidTarget(target string) error {
+	// Autocompletar esquema si falta
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		target = "http://" + target
+	}
+
 	u, err := url.Parse(target)
 	if err != nil {
 		return fmt.Errorf("URL inválida")
@@ -882,28 +887,11 @@ func isValidTarget(target string) error {
 		host = u.Host
 	}
 
-	// Bloquear loopback
+	// Bloquear loopback (localhost) solo por seguridad, pero permitir el resto de la red local
 	if !AllowLoopback && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
-		return fmt.Errorf("no se permite apuntar a la interfaz de loopback")
+		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
 	}
 
-	// Bloquear TODAS las IPs privadas y restringidas
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || isPrivateIP(ip)) {
-			return fmt.Errorf("IP privada o restringida")
-		}
-	} else {
-		// Intentar resolver el nombre para verificar si apunta a una IP privada
-		ips, err := net.LookupIP(host)
-		if err == nil {
-			for _, resolvedIP := range ips {
-				if !AllowLoopback && (resolvedIP.IsLoopback() || isPrivateIP(resolvedIP)) {
-					return fmt.Errorf("el dominio resuelve a una IP restringida")
-				}
-			}
-		}
-	}
 	return nil
 }
 

@@ -517,19 +517,45 @@
             {{end}}
           </tbody>
         </table>
-        <div class="section">
+        <div class="section" style="border: 1px solid rgba(251, 191, 36, 0.3)">
       <h2 style="color: #fbbf24">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px">
           <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3y-3.5"></path>
-        </svg>API Keys de Bypass (Acceso Programático)
+        </svg>Gestión de API Keys (Bypass)
       </h2>
-      <p style="font-size: 14px; color: #94a3b8; margin-bottom: 20px">Genera llaves de acceso para servicios automatizados. Cada acceso quedará registrado con el nombre de la llave.</p>
+      <p style="font-size: 14px; color: #94a3b8; margin-bottom: 20px">
+        ⚠️ Estas llaves permiten saltar la autenticación para un **servicio específico**. Úsalas para Webhooks o servicios de monitorización.
+      </p>
+
+      <div style="background: rgba(0, 0, 0, 0.2); padding: 20px; border-radius: 12px; margin-bottom: 24px">
+        <h3 style="font-size: 13px; color: #fbbf24; margin-bottom: 12px; text-transform: uppercase">Nueva API Key</h3>
+        <form method="POST" style="display: flex; gap: 12px; flex-wrap: wrap">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+          <input type="hidden" name="accion" value="add_bypass_key" />
+          
+          <input type="text" name="name" placeholder="Nombre (ej: GitHub Webhook)" required style="flex: 2" />
+          
+          <select name="host" required style="flex: 2; background: #0f172a; color: white; border: 1px solid #1e293b; border-radius: 10px; padding: 10px">
+            <option value="" disabled selected>Vincular a Servicio...</option>
+            {{range $host, $target := .Config.Servicios}}
+            <option value="{{$host}}">{{$host}}</option>
+            {{end}}
+          </select>
+
+          <div style="display: flex; gap: 8px; flex: 3; min-width: 300px">
+            <input type="text" name="token" id="new-api-token" placeholder="Pulsa generar..." readonly style="flex: 1; background: rgba(0,0,0,0.4); color: #fbbf24" required />
+            <button type="button" class="btn-primary" onclick="generateKey()">Generar</button>
+          </div>
+
+          <button type="submit" class="btn-success">Activar Key</button>
+        </form>
+      </div>
 
       <table>
         <thead>
           <tr>
-            <th>Nombre / Identidad</th>
-            <th>Servicio (Host)</th>
+            <th>Identidad</th>
+            <th>Servicio</th>
             <th>Token</th>
             <th>Acción</th>
           </tr>
@@ -538,46 +564,22 @@
           {{range .BypassKeys}}
           <tr>
             <td style="font-weight: 600; color: #fbbf24">{{.Name}}</td>
-            <td><span class="badge" style="background: rgba(129, 140, 248, 0.1); color: #818cf8">{{.Host}}</span></td>
-            <td><code style="font-size: 12px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px">{{.Token}}</code></td>
+            <td><code>{{.Host}}</code></td>
+            <td><code style="color: #94a3b8">{{.Token}}</code></td>
             <td>
-              <form method="POST" style="margin: 0" onsubmit="return confirm('¿Revocar esta API Key?');">
+              <form method="POST" style="margin: 0">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
                 <input type="hidden" name="accion" value="delete_bypass_key" />
                 <input type="hidden" name="token" value="{{.Token}}" />
-                <button class="btn-del" style="padding: 6px 12px; font-size: 11px">Revocar</button>
+                <button class="btn-del" style="padding: 4px 8px; font-size: 11px">Borrar</button>
               </form>
             </td>
           </tr>
           {{else}}
-          <tr><td colspan="4" style="text-align: center; color: #475569; padding: 20px">No hay API Keys activas</td></tr>
+          <tr><td colspan="4" style="text-align: center; color: #475569; padding: 12px">No hay API Keys activas</td></tr>
           {{end}}
         </tbody>
       </table>
-
-      <div style="margin-top: 24px; padding: 20px; background: rgba(0, 0, 0, 0.2); border-radius: 12px; border: 1px dashed rgba(251, 191, 36, 0.2)">
-        <h3 style="font-size: 14px; color: #fbbf24; margin-bottom: 16px">Generar Nueva API Key</h3>
-        <form method="POST" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-          <input type="hidden" name="accion" value="add_bypass_key" />
-          
-          <input type="text" name="name" placeholder="Ej: GitHub Webhook" required style="flex: 1; min-width: 150px" />
-          
-          <select name="host" required style="flex: 1; min-width: 150px; background: #0f172a; color: white; border: 1px solid #1e293b; border-radius: 10px; padding: 10px">
-            <option value="" disabled selected>Selecciona un servicio</option>
-            {{range $host, $target := .Config.Servicios}}
-            <option value="{{$host}}">{{$host}}</option>
-            {{end}}
-          </select>
-
-          <div style="display: flex; align-items: center; gap: 8px; flex: 2; min-width: 250px">
-            <input type="text" name="token" id="new-api-token" placeholder="Token generado" readonly style="flex: 1; background: rgba(0,0,0,0.3); color: #fbbf24" required />
-            <button type="button" class="btn-primary" style="padding: 10px; margin: 0" onclick="generateKey()">Generar</button>
-          </div>
-
-          <button type="submit" class="btn-success" style="margin: 0">Activar Key</button>
-        </form>
-      </div>
     </div>
 
     <div class="section" style="background: rgba(15, 23, 42, 0.4); border: 1px solid #1e293b; margin-top: 32px">
@@ -607,12 +609,24 @@
 
     <script>
       function generateKey() {
+        const nameInp = document.querySelector('input[name="name"]');
+        const hostInp = document.querySelector('select[name="host"]');
+        
+        if (!nameInp.value || !hostInp.value) {
+          alert("⚠️ Por favor, rellena primero el Nombre y selecciona un Servicio (Host).");
+          return;
+        }
+
         const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         let retVal = "rgbp_";
         for (let i = 0; i < 32; ++i) {
           retVal += charset.charAt(Math.floor(Math.random() * charset.length));
         }
-        document.getElementById('new-api-token').value = retVal;
+        
+        const tokenInp = document.getElementById('new-api-token');
+        tokenInp.value = retVal;
+        
+        console.log("Generada API Key para " + nameInp.value + " vinculada a " + hostInp.value);
       }
 
       function toggleEdit(host) {
