@@ -343,10 +343,20 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				if Config.Servicios == nil {
 					Config.Servicios = make(map[string]string)
 				}
+				if Config.Publicos == nil {
+					Config.Publicos = make(map[string]bool)
+				}
+				if Config.BypassHeaders == nil {
+					Config.BypassHeaders = make(map[string]string)
+				}
+
 				Config.Servicios[host] = target
+				Config.Publicos[host] = r.FormValue("public") == "on"
+				Config.BypassHeaders[host] = r.FormValue("bypass")
+
 				db.SaveConfig(Config)
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s", host, target), user.Username)
+				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s (Público: %v)", host, target, Config.Publicos[host]), user.Username)
 			}
 		} else if accion == "update_service" {
 			host := r.FormValue("old_host")
