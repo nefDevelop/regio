@@ -115,4 +115,4 @@ Una vez validada la autenticación, reGIO **elimina automáticamente** las cabec
 ---
 
 ## Licencia
-MIT License. Hecho para la comunidad Self-Hosted con foco en la seguridad.
+MIT License. Hecho para la comunidad Self-Hosted con un ojo en la seguridad.
