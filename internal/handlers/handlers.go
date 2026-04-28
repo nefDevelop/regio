@@ -941,9 +941,10 @@ func isValidTarget(target string) error {
 
 	ip := net.ParseIP(host)
 	if ip != nil {
-		if !AllowLoopback && isPrivateIP(ip) {
-			return fmt.Errorf("no se permite apuntar a direcciones privadas o locales por seguridad")
+		if !AllowLoopback && ip.IsLoopback() {
+			return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
 		}
+		// Permitimos redes privadas (RFC 1918) porque reGIO es para proteger servicios internos.
 	}
 
 	return nil
@@ -1049,6 +1050,12 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/static/") {
+		ServeStatic(sw, r)
+		return
+	}
+	// Fallback para favicon.ico usando el logo SVG
+	if r.URL.Path == "/favicon.ico" {
+		r.URL.Path = "/static/reGIO.svg"
 		ServeStatic(sw, r)
 		return
 	}

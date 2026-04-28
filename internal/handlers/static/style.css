@@ -241,8 +241,9 @@ input:focus {
   text-align: center;
 }
 
-/* BUTTONS - Skeleton */
+/* BUTTONS - Unified Base */
 button,
+.btn,
 .btn-nav,
 .btn-logout,
 .btn-add,
@@ -261,13 +262,14 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 44px; /* Matched with inputs */
+  height: 44px;
   padding: 0 24px;
   border-radius: 12px;
   font-size: 14px;
   text-decoration: none;
   appearance: none;
   -webkit-appearance: none;
+  white-space: nowrap;
 }
 
 /* BUTTONS - Themes */
@@ -279,7 +281,6 @@ button,
 
 .btn-success,
 .btn-add-green {
-  /* Alias para btn-add si queremos forzar verde */
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
@@ -305,12 +306,20 @@ button,
   background: rgba(239, 68, 68, 0.12);
   color: #fca5a5;
   border: 1px solid rgba(239, 68, 68, 0.25);
-  padding: 8px 16px; /* Más compacto para tablas */
-  border-radius: 10px;
+  padding: 0 16px;
+}
+
+.btn-edit {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 0 16px;
+  font-size: 13px;
 }
 
 /* Hovers */
 button:hover,
+.btn:hover,
 .btn-nav:hover,
 .btn-logout:hover,
 .btn-add:hover,
@@ -321,10 +330,16 @@ button:hover,
 .btn-edit:hover {
   transform: translateY(-2px);
   filter: brightness(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .btn-del:hover {
   background: var(--danger);
+  color: white;
+}
+
+.btn-edit:hover {
+  background: var(--primary);
   color: white;
 }
 
