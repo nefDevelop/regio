@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/static/reGIO.svg" />
     <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      @media (max-width: 768px) {
+        .header {
+          flex-direction: column;
+          align-items: flex-start !important;
+          gap: 16px;
+        }
+        .header > div {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .section {
+          padding: 16px !important;
+        }
+      }
+    </style>
   </head>
   <body class="admin-view">
     <div class="header">
@@ -65,68 +81,73 @@
           <path d="M12 12V8"></path></svg
         >Gestión de Puentes (Servicios)
       </h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Hostname Público</th>
-            <th>Destino Local</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .HealthResults}}
-          <tr id="row-{{.Host}}">
-            <td style="font-weight: 500; color: #818cf8">
-              <div class="view-mode" style="display: flex; align-items: center; gap: 10px">
-                <span class="status-dot {{if .Alive}}online{{else}}offline{{end}}" title="{{if .Alive}}Online{{else}}Offline{{end}}"></span>
-                <span>{{.Host}}</span>
-              </div>
-              <input
-                type="text"
-                form="form-{{.Host}}"
-                name="host"
-                value="{{.Host}}"
-                class="edit-mode"
-                style="display: none; margin: 0; padding: 6px 12px; font-size: 13px"
-              />
-            </td>
-            <td style="font-family: ui-monospace, monospace; color: #a1a1aa">
-              <div class="view-mode" style="display: flex; align-items: center">{{.Target}}</div>
-              <input
-                type="text"
-                form="form-{{.Host}}"
-                name="target"
-                value="{{.Target}}"
-                class="edit-mode"
-                style="display: none; width: 100%; margin: 0; padding: 6px 12px; font-size: 13px"
-              />
-            </td>
-            <td>
-              <div class="view-mode" style="display: flex; gap: 8px">
-                <button class="btn-edit" style="padding: 6px 12px; font-size: 12px" onclick="toggleEdit('{{.Host}}')">Editar</button>
-                <form method="POST" style="margin: 0" onsubmit="return confirm('¿Eliminar este puente?');">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="accion" value="delete_service" />
-                  <input type="hidden" name="host" value="{{.Host}}" />
-                  <button class="btn-del">Eliminar</button>
-                </form>
-              </div>
-              <div class="edit-mode" style="display: none; gap: 8px">
-                <form id="form-{{.Host}}" method="POST" style="margin: 0">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                  <input type="hidden" name="accion" value="update_service" />
-                  <input type="hidden" name="old_host" value="{{.Host}}" />
-                  <button class="btn-success" style="padding: 6px 12px; font-size: 12px">Guardar</button>
-                </form>
-                <button class="btn-logout" style="padding: 6px 12px; font-size: 12px; margin: 0" onclick="toggleEdit('{{.Host}}')">
-                  Cancelar
-                </button>
-              </div>
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Hostname Público</th>
+              <th>Destino Local</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .HealthResults}}
+            <tr id="row-{{.Host}}">
+              <td style="font-weight: 500; color: #818cf8">
+                <div class="view-mode" style="display: flex; align-items: center; gap: 10px">
+                  <span
+                    class="status-dot {{if .Alive}}online{{else}}offline{{end}}"
+                    title="{{if .Alive}}Online{{else}}Offline{{end}}"
+                  ></span>
+                  <span>{{.Host}}</span>
+                </div>
+                <input
+                  type="text"
+                  form="form-{{.Host}}"
+                  name="host"
+                  value="{{.Host}}"
+                  class="edit-mode"
+                  style="display: none; margin: 0; padding: 6px 12px; font-size: 13px"
+                />
+              </td>
+              <td style="font-family: ui-monospace, monospace; color: #a1a1aa">
+                <div class="view-mode" style="display: flex; align-items: center">{{.Target}}</div>
+                <input
+                  type="text"
+                  form="form-{{.Host}}"
+                  name="target"
+                  value="{{.Target}}"
+                  class="edit-mode"
+                  style="display: none; width: 100%; margin: 0; padding: 6px 12px; font-size: 13px"
+                />
+              </td>
+              <td>
+                <div class="view-mode" style="display: flex; gap: 8px">
+                  <button class="btn-edit" style="padding: 6px 12px; font-size: 12px" onclick="toggleEdit('{{.Host}}')">Editar</button>
+                  <form method="POST" style="margin: 0" onsubmit="return confirm('¿Eliminar este puente?');">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="accion" value="delete_service" />
+                    <input type="hidden" name="host" value="{{.Host}}" />
+                    <button class="btn-del">Eliminar</button>
+                  </form>
+                </div>
+                <div class="edit-mode" style="display: none; gap: 8px">
+                  <form id="form-{{.Host}}" method="POST" style="margin: 0">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <input type="hidden" name="accion" value="update_service" />
+                    <input type="hidden" name="old_host" value="{{.Host}}" />
+                    <button class="btn-success" style="padding: 6px 12px; font-size: 12px">Guardar</button>
+                  </form>
+                  <button class="btn-logout" style="padding: 6px 12px; font-size: 12px; margin: 0" onclick="toggleEdit('{{.Host}}')">
+                    Cancelar
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
 
       <div
         style="
@@ -202,41 +223,43 @@
           <path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg
         >Gestión de Usuarios
       </h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Usuario</th>
-            <th>Estado 2FA</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Users}}
-          <tr>
-            <td>
-              <span style="font-weight: 500">{{.Username}}</span>
-              {{if .IsAdmin}} <span class="badge badge-admin">Admin</span>{{end}}
-            </td>
-            <td>
-              {{if .TotpActive}}<span class="badge badge-success">Activo</span>{{else}}<span class="badge badge-neutral">Inactivo</span
-              >{{end}}
-            </td>
-            <td>
-              {{if eq .ID 1}}
-              <span class="badge badge-neutral" style="padding: 6px 14px; font-size: 12px; opacity: 0.7">🔒 Sistema</span>
-              {{else}}
-              <form method="POST" style="margin: 0">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="accion" value="delete_user" />
-                <input type="hidden" name="del_user" value="{{.Username}}" />
-                <button class="btn-del">Eliminar</button>
-              </form>
-              {{end}}
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Estado 2FA</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Users}}
+            <tr>
+              <td>
+                <span style="font-weight: 500">{{.Username}}</span>
+                {{if .IsAdmin}} <span class="badge badge-admin">Admin</span>{{end}}
+              </td>
+              <td>
+                {{if .TotpActive}}<span class="badge badge-success">Activo</span>{{else}}<span class="badge badge-neutral">Inactivo</span
+                >{{end}}
+              </td>
+              <td>
+                {{if eq .ID 1}}
+                <span class="badge badge-neutral" style="padding: 6px 14px; font-size: 12px; opacity: 0.7">🔒 Sistema</span>
+                {{else}}
+                <form method="POST" style="margin: 0">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="accion" value="delete_user" />
+                  <input type="hidden" name="del_user" value="{{.Username}}" />
+                  <button class="btn-del">Eliminar</button>
+                </form>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
 
       <div
         style="
@@ -289,31 +312,33 @@
           <path d="m15 10-6 6"></path></svg
         >Gestión de Seguridad (Fail2Ban)
       </h2>
-      <table>
-        <thead>
-          <tr>
-            <th>IP o Rango</th>
-            <th>Bloqueado Hasta</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .BannedIPs}}
-          <tr>
-            <td style="font-family: ui-monospace, monospace; color: #ef4444">{{.Target}}</td>
-            <td style="font-size: 13px; color: #a1a1aa">{{.Hasta}}</td>
-            <td>
-              <form method="POST" style="margin: 0">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="accion" value="unban_ip" />
-                <input type="hidden" name="target_ip" value="{{.Target}}" />
-                <button class="btn-primary" style="padding: 10px 20px; border-radius: 10px; font-size: 13px">Desbloquear</button>
-              </form>
-            </td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>IP o Rango</th>
+              <th>Bloqueado Hasta</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .BannedIPs}}
+            <tr>
+              <td style="font-family: ui-monospace, monospace; color: #ef4444">{{.Target}}</td>
+              <td style="font-size: 13px; color: #a1a1aa">{{.Hasta}}</td>
+              <td>
+                <form method="POST" style="margin: 0">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="accion" value="unban_ip" />
+                  <input type="hidden" name="target_ip" value="{{.Target}}" />
+                  <button class="btn-primary" style="padding: 10px 20px; border-radius: 10px; font-size: 13px">Desbloquear</button>
+                </form>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
 
       <div
         style="
@@ -374,44 +399,46 @@
       <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 32px">
         Lista de todos los navegadores con acceso activo al panel.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Usuario</th>
-            <th>IP / Dispositivo</th>
-            <th>Actividad</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .AllSessions}}
-          <tr>
-            <td style="font-weight: 600; color: #818cf8">{{.Username}}</td>
-            <td>
-              <span style="font-family: ui-monospace, monospace; color: var(--text)">{{.IP}}</span>
-              {{if .IsCurrent}}<span class="badge badge-success" style="font-size: 10px">Tú</span>{{end}}
-            </td>
-            <td style="font-size: 0.9em; color: var(--text-muted)">{{.LastActive}}</td>
-            <td style="text-align: right">
-              {{if not .IsCurrent}}
-              <form method="POST" style="display: inline; margin: 0">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                <input type="hidden" name="accion" value="revoke_session" />
-                <input type="hidden" name="token" value="{{.Token}}" />
-                <button class="btn-del" style="padding: 6px 14px; font-size: 12px; width: auto; margin: 0">Revocar</button>
-              </form>
-              {{else}}
-              <span style="color: var(--text-dim); font-size: 12px">Sesión actual</span>
-              {{end}}
-            </td>
-          </tr>
-          {{else}}
-          <tr>
-            <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 32px">No hay otras sesiones activas.</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>IP / Dispositivo</th>
+              <th>Actividad</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .AllSessions}}
+            <tr>
+              <td style="font-weight: 600; color: #818cf8">{{.Username}}</td>
+              <td>
+                <span style="font-family: ui-monospace, monospace; color: var(--text)">{{.IP}}</span>
+                {{if .IsCurrent}}<span class="badge badge-success" style="font-size: 10px">Tú</span>{{end}}
+              </td>
+              <td style="font-size: 0.9em; color: var(--text-muted)">{{.LastActive}}</td>
+              <td style="text-align: right">
+                {{if not .IsCurrent}}
+                <form method="POST" style="display: inline; margin: 0">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <input type="hidden" name="accion" value="revoke_session" />
+                  <input type="hidden" name="token" value="{{.Token}}" />
+                  <button class="btn-del" style="padding: 6px 14px; font-size: 12px; width: auto; margin: 0">Revocar</button>
+                </form>
+                {{else}}
+                <span style="color: var(--text-dim); font-size: 12px">Sesión actual</span>
+                {{end}}
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 32px">No hay otras sesiones activas.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="section">
@@ -433,13 +460,8 @@
           <line x1="9" y1="3" x2="9" y2="21"></line>
           <line x1="15" y1="3" x2="15" y2="21"></line></svg
         >Registro de Eventos
-        <form method="POST" style="margin: 0; display: inline" onsubmit="return confirm('¿Vaciar todo el historial de eventos?');">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-          <input type="hidden" name="accion" value="clear_events" />
-          <button class="btn-del" style="margin-left: 20px; font-size: 11px; padding: 6px 12px">Vaciar Historial</button>
-        </form>
       </h2>
-      <div class="log-container">
+      <div class="log-container" style="width: 100%; overflow-x: auto">
         <table>
           <tbody>
             {{range .Events}}

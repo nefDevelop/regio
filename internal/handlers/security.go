@@ -9,9 +9,14 @@ import (
 )
 
 var (
-	peticionesDB = make(map[string][]time.Time)
+	peticionesDB  = make(map[string][]time.Time)
 	maxPeticiones = 100 // 100 peticiones
 	ventanaTiempo = 1 * time.Minute
+
+	// Rate-limit por usuario: protección contra fuerza bruta distribuida (botnet)
+	intentosUsuario    = make(map[string]*models.Intento)
+	maxFallosUsuario   = 10             // 10 intentos fallidos desde cualquier IP
+	bloqueoUsuario     = 30 * time.Minute // Bloqueo de 30 minutos por cuenta
 )
 
 func InitSecurity() {
@@ -39,6 +44,12 @@ func CheckRateLimit(ip string) bool {
 	defer Mu.Unlock()
 
 	ahora := time.Now()
+
+	// MED-01: Protección contra memory exhaustion
+	if len(peticionesDB) > 10000 {
+		// Purgar todo si hay demasiadas IPs rastreadas (ataque distribuido)
+		peticionesDB = make(map[string][]time.Time)
+	}
 	
 	// 1. Limpiar peticiones antiguas fuera de la ventana
 	if times, ok := peticionesDB[ip]; ok {
@@ -137,4 +148,57 @@ func IsIPBlocked(ip string) (bool, string) {
 	}
 
 	return false, ""
+}
+
+// RegistrarFalloUsuario registra un intento fallido de login para un username específico.
+// Bloquea la cuenta tras maxFallosUsuario intentos, independientemente de la IP.
+func RegistrarFalloUsuario(username string) {
+	Mu.Lock()
+	defer Mu.Unlock()
+
+	key := "user:" + username
+	if _, ok := intentosUsuario[key]; !ok {
+		intentosUsuario[key] = &models.Intento{Fallos: 1}
+	} else {
+		intentosUsuario[key].Fallos++
+		if intentosUsuario[key].Fallos >= maxFallosUsuario {
+			intentosUsuario[key].BloqueadoHasta = time.Now().Add(bloqueoUsuario)
+			db.LogEvent(fmt.Sprintf("⊘ CUENTA BLOQUEADA (fuerza bruta distribuida): %s (%d intentos)", username, intentosUsuario[key].Fallos), "Sistema")
+		}
+	}
+}
+
+// IsUserBlocked comprueba si un username está bloqueado por exceso de intentos fallidos.
+func IsUserBlocked(username string) bool {
+	Mu.Lock()
+	defer Mu.Unlock()
+
+	key := "user:" + username
+	if reg, ok := intentosUsuario[key]; ok && time.Now().Before(reg.BloqueadoHasta) {
+		return true
+	}
+	return false
+}
+
+// ResetearIntentosUsuario limpia los fallos tras un login exitoso.
+func ResetearIntentosUsuario(username string) {
+	Mu.Lock()
+	defer Mu.Unlock()
+	delete(intentosUsuario, "user:"+username)
+}
+
+// LimpiarIntentosUsuario purga entradas expiradas de la tabla de intentos por usuario.
+func LimpiarIntentosUsuario() {
+	Mu.Lock()
+	defer Mu.Unlock()
+	ahora := time.Now()
+	for key, intento := range intentosUsuario {
+		if ahora.After(intento.BloqueadoHasta) && intento.Fallos > 0 {
+			// Reducir gradualmente los fallos (decay)
+			intento.Fallos = intento.Fallos / 2
+			if intento.Fallos == 0 {
+				delete(intentosUsuario, key)
+			}
+		}
+	}
 }

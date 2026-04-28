@@ -8,11 +8,12 @@ RUN go mod download && \
 
 # Etapa 2: Imagen final minimalista
 FROM alpine:latest
-RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
-WORKDIR /root/
-# Copiamos el binario compilado
-COPY --from=builder /app/REGIO .
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata && \
+    adduser -D -u 1000 regio
+WORKDIR /home/regio
+COPY --from=builder --chown=regio:regio /app/REGIO .
 # Crear carpeta para montar la base de datos SQLite
-RUN mkdir data
+RUN mkdir data && chown regio:regio data
+USER regio
 EXPOSE 80
 CMD ["./REGIO"]

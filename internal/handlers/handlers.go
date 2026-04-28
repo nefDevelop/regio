@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"fmt"
 	"html/template"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -37,20 +40,61 @@ var (
 	SessionKey     = "REGIO_session"
 	Tmpls          *template.Template
 	TrustedProxies []string
-	// Transport personalizado para el proxy con timeouts estrictos
+	// Transport personalizado para el proxy con validación DNS anti-rebinding (MED-04)
 	proxyTransport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		DialContext: safeDialContext,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second, // Evita backends lentos
+		ResponseHeaderTimeout: 10 * time.Second,
 	}
 )
+
+// safeDialContext resuelve DNS y valida que la IP no sea privada antes de conectar.
+// Previene ataques SSRF por DNS rebinding (TOCTOU).
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("dirección inválida: %s", addr)
+	}
+
+	// Si ya es una IP, validarla directamente
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateIP(ip) || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return nil, fmt.Errorf("proxy bloqueado: IP restringida %s", ip)
+		}
+		dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+		return dialer.DialContext(ctx, network, addr)
+	}
+
+	// Resolver DNS y validar todas las IPs resultantes
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolución DNS fallida para %s: %v", host, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("sin resultados DNS para %s", host)
+	}
+
+	for _, ip := range ips {
+		if isPrivateIP(ip.IP) || ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() {
+			db.LogEvent(fmt.Sprintf("⚠ SSRF bloqueado: %s resuelve a IP restringida %s", host, ip.IP), "Sistema")
+			return nil, fmt.Errorf("proxy bloqueado: %s resuelve a IP restringida %s", host, ip.IP)
+		}
+	}
+
+	// Conectar usando la primera IP validada (evita re-resolución)
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+}
+
+// sessionHash genera un hash SHA-256 del token de sesión para almacenamiento seguro.
+func sessionHash(rawToken string) string {
+	h := sha256.Sum256([]byte(rawToken))
+	return base64.RawURLEncoding.EncodeToString(h[:])
+}
 
 func Init() {
 	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
@@ -147,6 +191,13 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		inputUser := r.FormValue("user")
 		LogEvent(fmt.Sprintf("🔍 Intento de login para usuario: %s desde %s", inputUser, ip), "Sistema")
 
+		// Verificar si la cuenta está bloqueada por fuerza bruta distribuida
+		if IsUserBlocked(inputUser) {
+			db.LogEvent(fmt.Sprintf("⊜ Intento de login en cuenta bloqueada: %s desde %s", inputUser, ip), "Sistema")
+			http.Redirect(w, r, "/REGIO-login?error=locked", http.StatusSeeOther)
+			return
+		}
+
 		var hash, totpEnc, inviteStored string
 		var id int
 		var isAdmin, totpActive bool
@@ -158,7 +209,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		if err == nil && hash == "" {
 			// El usuario no tiene contraseña, verificamos el token de invitación
 			inviteGiven := r.URL.Query().Get("invite")
-			if inviteGiven == "" || inviteGiven != inviteStored {
+			if inviteGiven == "" || subtle.ConstantTimeCompare([]byte(inviteGiven), []byte(inviteStored)) != 1 {
 				db.LogEvent(fmt.Sprintf("⚠ Intento de acceso a usuario sin contraseña sin token válido: %s", inputUser), ip)
 				http.Redirect(w, r, "/REGIO-login?error=invalid_invite", http.StatusSeeOther)
 				return
@@ -168,17 +219,22 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			if step == "set_password" {
 				newPass := r.FormValue("new_pass")
 				confirmPass := r.FormValue("confirm_pass")
+				if len(newPass) < 8 {
+					Tmpls.ExecuteTemplate(w, "setpassword.html", map[string]interface{}{"User": inputUser, "Error": "La contraseña debe tener al menos 8 caracteres"})
+					return
+				}
 				if newPass != "" && newPass == confirmPass {
 					newHash := auth.HashPassword(newPass)
 					// Guardamos la pass y BORRAMOS el invite_token
 					db.DB.Exec("UPDATE users SET password_hash = ?, invite_token = NULL WHERE id = ?", newHash, id)
 
-					token := auth.GenerateSessionToken()
-					setSessionCookie(w, r, token)
+					rawToken := auth.GenerateSessionToken()
+					setSessionCookie(w, r, rawToken)
+					tokenHash := sessionHash(rawToken)
 
 					csrf := auth.GenerateSessionToken()
 					Mu.Lock()
-					ActiveSessions[token] = &models.User{
+					ActiveSessions[tokenHash] = &models.User{
 						ID:         id,
 						Username:   inputUser,
 						IsAdmin:    isAdmin,
@@ -190,7 +246,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 					delete(IntentosDB, ip)
 					Mu.Unlock()
 
-					db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", token, id, csrf, ip, r.UserAgent(), time.Now())
+					db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", tokenHash, id, csrf, ip, r.UserAgent(), time.Now())
 					db.LogEvent(fmt.Sprintf("⚿ Contraseña inicial creada y sesión iniciada: %s", inputUser), inputUser)
 					http.Redirect(w, r, "/", http.StatusSeeOther)
 					return
@@ -224,12 +280,14 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		}
 
 		if loginValido {
-			token := auth.GenerateSessionToken()
-			setSessionCookie(w, r, token)
+			ResetearIntentosUsuario(inputUser)
+			rawToken := auth.GenerateSessionToken()
+			setSessionCookie(w, r, rawToken)
+			tokenHash := sessionHash(rawToken)
 
 			csrf := auth.GenerateSessionToken()
 			Mu.Lock()
-			ActiveSessions[token] = &models.User{
+			ActiveSessions[tokenHash] = &models.User{
 				ID:         id,
 				Username:   inputUser,
 				IsAdmin:    isAdmin,
@@ -241,13 +299,14 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			delete(IntentosDB, ip)
 			Mu.Unlock()
 
-			db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", token, id, csrf, ip, r.UserAgent(), time.Now())
+			db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", tokenHash, id, csrf, ip, r.UserAgent(), time.Now())
 			db.LogEvent(fmt.Sprintf("✓ Inicio de sesión exitoso: %s (%s)", inputUser, ip), inputUser)
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
 
 		RegistrarFallo(ip)
+		RegistrarFalloUsuario(inputUser)
 		http.Redirect(w, r, "/REGIO-login?error=1", http.StatusSeeOther)
 		return
 	}
@@ -256,8 +315,9 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(SessionKey)
+	cookieHash := sessionHash(cookie.Value)
 	Mu.Lock()
-	user, ok := ActiveSessions[cookie.Value]
+	user, ok := ActiveSessions[cookieHash]
 	Mu.Unlock()
 	if !ok {
 		http.Error(w, "Sesión inválida", http.StatusUnauthorized)
@@ -304,6 +364,15 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				}
 				delete(Config.Servicios, host)
 				Config.Servicios[newHost] = target
+				// Mantener sincronizado el estado de "Público" y "Bypass"
+				isPublic := Config.Publicos[host]
+				delete(Config.Publicos, host)
+				Config.Publicos[newHost] = isPublic
+				
+				bypass := Config.BypassHeaders[host]
+				delete(Config.BypassHeaders, host)
+				Config.BypassHeaders[newHost] = bypass
+
 				db.SaveConfig(Config)
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target), user.Username)
@@ -312,6 +381,8 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			host := r.FormValue("host")
 			Mu.Lock()
 			delete(Config.Servicios, host)
+			delete(Config.Publicos, host)
+			delete(Config.BypassHeaders, host)
 			db.SaveConfig(Config)
 			Mu.Unlock()
 			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
@@ -467,7 +538,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			Username:   sUser.Username,
 			IP:         sUser.RemoteIP,
 			LastActive: RelTime(sUser.LastActive),
-			IsCurrent:  token == cookie.Value,
+			IsCurrent:  token == cookieHash,
 		})
 	}
 	Mu.Unlock()
@@ -498,8 +569,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 
 func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(SessionKey)
+	cookieHash := sessionHash(cookie.Value)
 	Mu.Lock()
-	userSession, ok := ActiveSessions[cookie.Value]
+	userSession, ok := ActiveSessions[cookieHash]
 	Mu.Unlock()
 	if !ok {
 		http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
@@ -507,8 +579,8 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var u models.User
-	var totpEnc string
-	db.DB.QueryRow("SELECT id, username, COALESCE(totp_secret, ''), totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &totpEnc, &u.TotpActive, &u.IsAdmin)
+	var totpEnc, passwordHash string
+	db.DB.QueryRow("SELECT id, username, COALESCE(password_hash, ''), COALESCE(totp_secret, ''), totp_active, is_admin FROM users WHERE id = ?", userSession.ID).Scan(&u.ID, &u.Username, &passwordHash, &totpEnc, &u.TotpActive, &u.IsAdmin)
 
 	if totpEnc == "" {
 		rawTotp := auth.GenerateTOTPSecret()
@@ -531,6 +603,15 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 		if accion == "update_profile" {
 			newUsername := r.FormValue("new_username")
 			newPassword := r.FormValue("new_password")
+			currentPassword := r.FormValue("current_password")
+
+			// Verificar contraseña actual para cualquier cambio de credenciales
+			needsVerification := newPassword != "" || (newUsername != "" && newUsername != u.Username)
+			if needsVerification && !auth.VerifyPassword(currentPassword, passwordHash) {
+				http.Error(w, "Contraseña actual incorrecta", http.StatusForbidden)
+				return
+			}
+
 			if newUsername != "" && newUsername != u.Username {
 				_, err := db.DB.Exec("UPDATE users SET username = ? WHERE id = ?", newUsername, u.ID)
 				if err == nil {
@@ -542,9 +623,22 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if newPassword != "" {
+				if len(newPassword) < 8 {
+					http.Error(w, "La contraseña debe tener al menos 8 caracteres", http.StatusBadRequest)
+					return
+				}
 				newHash := auth.HashPassword(newPassword)
 				db.DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", newHash, u.ID)
-				db.LogEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s", u.Username), u.Username)
+				// Invalidar todas las demás sesiones del usuario (LOW-02)
+				Mu.Lock()
+				for token, sUser := range ActiveSessions {
+					if sUser.ID == u.ID && token != cookieHash {
+						delete(ActiveSessions, token)
+					}
+				}
+				Mu.Unlock()
+				db.DB.Exec("DELETE FROM sessions WHERE user_id = ? AND token != ?", u.ID, cookieHash)
+				db.LogEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s (sesiones previas invalidadas)", u.Username), u.Username)
 			}
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
@@ -617,7 +711,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				Token:      token,
 				IP:         sUser.RemoteIP,
 				LastActive: RelTime(sUser.LastActive),
-				IsCurrent:  token == cookie.Value,
+				IsCurrent:  token == cookieHash,
 			})
 		}
 	}
@@ -647,19 +741,39 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleSetup(w http.ResponseWriter, r *http.Request) {
+	// CRIT-04: Verificar NeedsSetup dentro del handler para evitar race condition
+	Mu.Lock()
+	if !NeedsSetup {
+		Mu.Unlock()
+		http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+		return
+	}
+	Mu.Unlock()
+
 	if r.Method == "POST" {
 		user := r.FormValue("user")
 		pass := r.FormValue("pass")
+		if len(pass) < 12 {
+			Tmpls.ExecuteTemplate(w, "setup.html", "La contraseña del administrador debe tener al menos 12 caracteres")
+			return
+		}
 		if user != "" && pass != "" {
 			hash := auth.HashPassword(pass)
 			rawSecret := auth.GenerateTOTPSecret()
 			encryptedSecret, _ := auth.Encrypt(rawSecret)
+			Mu.Lock()
+			if !NeedsSetup {
+				Mu.Unlock()
+				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+				return
+			}
 			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, encryptedSecret)
 			if err == nil {
 				db.LogEvent("✓ Instalación completada. Administrador original creado.", "Sistema")
-				Mu.Lock()
 				NeedsSetup = false
-				Mu.Unlock()
+			}
+			Mu.Unlock()
+			if err == nil {
 				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
 				return
 			}
@@ -748,7 +862,7 @@ func isPrivateIP(ip net.IP) bool {
 			(ip4[0] == 192 && ip4[1] == 168)
 	}
 	// RFC 4193 (IPv6 Unique Local Address)
-	return len(ip) == 16 && ip[0] == 0xfc || ip[0] == 0xfd
+	return len(ip) == 16 && (ip[0] == 0xfc || ip[0] == 0xfd)
 }
 
 func LogEvent(message string, performer string) {
@@ -769,14 +883,13 @@ func UpdateSessionActivity(token string) {
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	LogEvent(fmt.Sprintf("🍪 Creando cookie de sesión. Secure: %v, SameSite: Lax, Proto: %s", isSecure, r.Header.Get("X-Forwarded-Proto")), "Sistema")
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionKey,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   3600 * 24,
 	})
 }
@@ -796,14 +909,26 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	ip := getRealIP(r)
 
+	// Sanitizar URI para logs (eliminar parámetros sensibles)
+	logURI := r.URL.Path
+	if r.URL.RawQuery != "" {
+		logURI += "?[redacted]"
+	}
+
 	defer func() {
-		LogEvent(fmt.Sprintf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, r.URL.RequestURI(), ip, r.Host), "Sistema")
+		// Solo loguear peticiones no estáticas para evitar DoS de almacenamiento (HIGH-04)
+		if !strings.HasPrefix(r.URL.Path, "/static/") {
+			log.Printf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, logURI, ip, r.Host)
+		}
 	}()
 
 	sw.Header().Set("X-Content-Type-Options", "nosniff")
 	sw.Header().Set("X-Frame-Options", "DENY")
 	sw.Header().Set("X-XSS-Protection", "1; mode=block")
 	sw.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	sw.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	sw.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	sw.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 
 	if !CheckRateLimit(ip) {
 		sw.status = http.StatusTooManyRequests
@@ -843,19 +968,12 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie, err := r.Cookie(SessionKey)
 	if err == nil {
-		LogEvent(fmt.Sprintf("🔍 Cookie encontrada en %s: %s...", r.URL.Path, cookie.Value[:8]), "Sistema")
+		cHash := sessionHash(cookie.Value)
 		Mu.Lock()
-		user, validSession = ActiveSessions[cookie.Value]
+		user, validSession = ActiveSessions[cHash]
 		Mu.Unlock()
 		if validSession {
-			UpdateSessionActivity(cookie.Value)
-			LogEvent(fmt.Sprintf("✅ Sesión válida para %s", user.Username), "Sistema")
-		} else {
-			LogEvent("❌ Sesión no encontrada en ActiveSessions", "Sistema")
-		}
-	} else {
-		if !strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Path != "/REGIO-login" && r.URL.Path != "/setup" {
-			LogEvent(fmt.Sprintf("🔍 No hay cookie de sesión en %s", r.URL.Path), "Sistema")
+			UpdateSessionActivity(cHash)
 		}
 	}
 
@@ -912,7 +1030,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(SessionKey)
 		Mu.Lock()
 		if err == nil {
-			delete(ActiveSessions, cookie.Value)
+			delete(ActiveSessions, sessionHash(cookie.Value))
 		}
 		Mu.Unlock()
 		http.SetCookie(sw, &http.Cookie{Name: SessionKey, Value: "", Path: "/", MaxAge: -1})

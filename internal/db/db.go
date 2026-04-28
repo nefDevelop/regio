@@ -20,6 +20,11 @@ func InitDB() {
 		log.Fatal("Error abriendo DB:", err)
 	}
 
+	// Pragmas de seguridad y rendimiento
+	DB.Exec("PRAGMA journal_mode=WAL")
+	DB.Exec("PRAGMA busy_timeout=5000")
+	DB.Exec("PRAGMA foreign_keys=ON")
+
 	createTable := `
 	CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +89,19 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla app_tokens:", err)
 	}
+
+	// Nueva tabla de servicios (Configuración en DB)
+	createServicesTable := `
+	CREATE TABLE IF NOT EXISTS servicios (
+		host TEXT PRIMARY KEY,
+		target TEXT NOT NULL,
+		is_public BOOLEAN DEFAULT 0,
+		bypass_header TEXT DEFAULT ''
+	);`
+	_, err = DB.Exec(createServicesTable)
+	if err != nil {
+		log.Fatal("Error creando tabla servicios:", err)
+	}
 }
 
 func CheckNeedsSetup() bool {
@@ -92,13 +110,89 @@ func CheckNeedsSetup() bool {
 	return count == 0
 }
 
+// SaveConfig guarda la configuración completa en la DB.
+// Nota: En DB los servicios se guardan individualmente, pero mantenemos esta función por compatibilidad.
 func SaveConfig(config models.Config) error {
-	data, _ := json.MarshalIndent(config, "", "  ")
-	tmpFile := "./data/config.json.tmp"
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+	tx, err := DB.Begin()
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmpFile, "./data/config.json")
+	defer tx.Rollback()
+
+	// Limpiar tabla actual para reemplazo total (como hacía el JSON)
+	_, _ = tx.Exec("DELETE FROM servicios")
+
+	stmt, _ := tx.Prepare("INSERT INTO servicios (host, target, is_public, bypass_header) VALUES (?, ?, ?, ?)")
+	defer stmt.Close()
+
+	for host, target := range config.Servicios {
+		isPublic := config.Publicos[host]
+		bypass := config.BypassHeaders[host]
+		_, err = stmt.Exec(host, target, isPublic, bypass)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// LoadConfig lee la configuración desde la DB. Implementa migración desde JSON si existe.
+func LoadConfig() (models.Config, error) {
+	config := models.Config{
+		Servicios:     make(map[string]string),
+		Publicos:      make(map[string]bool),
+		BypassHeaders: make(map[string]string),
+	}
+
+	// 1. Verificar si existe config.json para migración
+	jsonPath := "./data/config.json"
+	if _, err := os.Stat(jsonPath); err == nil {
+		log.Println("ℹ️ Detectado config.json antiguo. Migrando a Base de Datos...")
+		data, _ := os.ReadFile(jsonPath)
+		var oldConfig models.Config
+		if err := json.Unmarshal(data, &oldConfig); err == nil {
+			err = SaveConfig(oldConfig)
+			if err == nil {
+				log.Println("✅ Migración completada exitosamente.")
+				os.Rename(jsonPath, jsonPath+".bak")
+			} else {
+				log.Printf("✕ Error migrando datos: %v", err)
+			}
+		}
+	}
+
+	// 2. Cargar desde DB
+	rows, err := DB.Query("SELECT host, target, is_public, bypass_header FROM servicios")
+	if err != nil {
+		return config, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var host, target, bypass string
+		var isPublic bool
+		if err := rows.Scan(&host, &target, &isPublic, &bypass); err == nil {
+			config.Servicios[host] = target
+			config.Publicos[host] = isPublic
+			if bypass != "" {
+				config.BypassHeaders[host] = bypass
+			}
+		}
+	}
+
+	return config, nil
+}
+
+// Métodos individuales para el CLI
+func AddService(host, target string, isPublic bool, bypass string) error {
+	_, err := DB.Exec("INSERT OR REPLACE INTO servicios (host, target, is_public, bypass_header) VALUES (?, ?, ?, ?)", host, target, isPublic, bypass)
+	return err
+}
+
+func DeleteService(host string) error {
+	_, err := DB.Exec("DELETE FROM servicios WHERE host = ?", host)
+	return err
 }
 
 func LogEvent(message string, performer string) {
@@ -108,10 +202,3 @@ func LogEvent(message string, performer string) {
 	log.Printf("[%s] %s", performer, message)
 }
 
-func ClearEvents() error {
-	if DB != nil {
-		_, err := DB.Exec("DELETE FROM events")
-		return err
-	}
-	return nil
-}

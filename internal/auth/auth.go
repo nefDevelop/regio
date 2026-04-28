@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -26,13 +27,23 @@ var encryptionKey []byte
 func init() {
 	key := os.Getenv("MASTER_KEY")
 	if key == "" {
-		// En producción esto debería estar en una variable de entorno.
-		// Si no existe, usamos una derivación del nombre del host o algo persistente sería mejor,
-		// pero por ahora alertamos de que es necesaria para el cifrado real.
-		encryptionKey = []byte("regio-default-master-key-32bytes") 
-	} else {
-		hash := sha256.Sum256([]byte(key))
-		encryptionKey = hash[:]
+		log.Println("⚠ MASTER_KEY no configurada. El cifrado se inicializará cuando se llame a InitEncryption().")
+		return
+	}
+	hash := sha256.Sum256([]byte(key))
+	encryptionKey = hash[:]
+}
+
+// InitEncryption verifica que la clave de cifrado esté lista. Debe llamarse al arrancar.
+func InitEncryption() {
+	if encryptionKey == nil {
+		key := os.Getenv("MASTER_KEY")
+		if key != "" {
+			hash := sha256.Sum256([]byte(key))
+			encryptionKey = hash[:]
+			return
+		}
+		log.Fatal("FATAL: La variable de entorno MASTER_KEY es obligatoria. El cifrado de secretos TOTP no puede funcionar sin ella.")
 	}
 }
 
@@ -157,4 +168,61 @@ func VerifyAppToken(token string) (*models.User, string, bool) {
 	db.DB.Exec("UPDATE app_tokens SET last_used = ? WHERE token_hash = ?", time.Now(), tokenHash)
 
 	return &user, tokenName, true
+}
+
+// UpdateEncryptionKey actualiza la clave de cifrado en memoria (para rotación).
+func UpdateEncryptionKey(newKeyRaw string) {
+	hash := sha256.Sum256([]byte(newKeyRaw))
+	encryptionKey = hash[:]
+}
+
+// RotateMasterKey re-cifra todos los secretos TOTP con una nueva clave maestra.
+// Debe llamarse con la clave antigua activa en encryptionKey.
+func RotateMasterKey(newKeyRaw string) (int, error) {
+	// 1. Leer todos los secretos cifrados con la clave actual
+	rows, err := db.DB.Query("SELECT id, COALESCE(totp_secret, '') FROM users WHERE totp_secret IS NOT NULL AND totp_secret != ''")
+	if err != nil {
+		return 0, fmt.Errorf("error leyendo usuarios: %v", err)
+	}
+	defer rows.Close()
+
+	type secretPair struct {
+		id        int
+		plaintext string
+	}
+	var secrets []secretPair
+
+	for rows.Next() {
+		var id int
+		var encrypted string
+		rows.Scan(&id, &encrypted)
+		if encrypted == "" {
+			continue
+		}
+		plaintext, err := Decrypt(encrypted)
+		if err != nil {
+			return 0, fmt.Errorf("error descifrando secreto del usuario %d: %v", id, err)
+		}
+		secrets = append(secrets, secretPair{id: id, plaintext: plaintext})
+	}
+
+	// 2. Cambiar a la nueva clave
+	UpdateEncryptionKey(newKeyRaw)
+
+	// 3. Re-cifrar todos los secretos con la nueva clave
+	count := 0
+	for _, s := range secrets {
+		newEncrypted, err := Encrypt(s.plaintext)
+		if err != nil {
+			return count, fmt.Errorf("error re-cifrando secreto del usuario %d: %v", s.id, err)
+		}
+		_, err = db.DB.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", newEncrypted, s.id)
+		if err != nil {
+			return count, fmt.Errorf("error guardando secreto re-cifrado del usuario %d: %v", s.id, err)
+		}
+		count++
+	}
+
+	db.LogEvent(fmt.Sprintf("⚿ MASTER_KEY rotada exitosamente. %d secretos TOTP re-cifrados.", count), "Sistema")
+	return count, nil
 }

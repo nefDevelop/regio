@@ -10,11 +10,6 @@ import (
 	"regio/internal/db"
 )
 
-func TestMain(m *testing.M) {
-	// Inicializar DB de prueba en una ubicación temporal
-	db.InitDB()
-	m.Run()
-}
 
 func TestMainHandlerTokens(t *testing.T) {
 	// 1. Configuración de prueba

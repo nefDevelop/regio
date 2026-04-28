@@ -8,8 +8,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/root/data:rw
-      - ./static:/root/static:ro
+      - ./data:/home/regio/data:rw
+      - ./static:/home/regio/static:ro
     logging:
       driver: "json-file"
       options:

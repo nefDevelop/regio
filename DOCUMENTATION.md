@@ -52,6 +52,7 @@ Los secretos TOTP (2FA) se almacenan cifrados en la base de datos utilizando AES
 ### Sesiones Blindadas
 *   **CSRF Persistente:** Los tokens CSRF se guardan en la base de datos vinculados a la sesión. Esto permite reiniciar el servidor sin invalidar los formularios abiertos de los usuarios.
 *   **SameSite Strict:** Las cookies de sesión están configuradas como `SameSite: Strict` para máxima protección.
+*   **Tokens Hasheados:** Los tokens de sesión se almacenan hasheados (SHA-256) en la base de datos para proteger contra robo de sesiones en caso de acceso al archivo de la DB.
 
 ---
 
@@ -76,5 +77,36 @@ ReGiO utiliza un transporte HTTP personalizado para sus operaciones de proxy:
 ## 6. Variables de Entorno
 
 *   **ADMIN_DOMAIN:** Dominio donde reside el panel administrativo.
-*   **MASTER_KEY:** Clave de 32 bytes (o cadena hasheada) para el cifrado AES.
+*   **MASTER_KEY:** (**Obligatoria**) Clave para el cifrado AES de secretos TOTP. La aplicación no arrancará sin ella.
 *   **TRUSTED_PROXIES:** Lista separada por comas de IPs o rangos CIDR autorizados.
+
+---
+
+## 7. Gestión por Consola (CLI)
+
+ReGiO permite gestionar la configuración de los servicios directamente desde la terminal. Esto es útil para automatización o administración rápida sin usar la interfaz web.
+
+### Comandos Disponibles
+
+*   **Listar servicios:**
+    ```bash
+    ./REGIO list
+    ```
+    Muestra una tabla con todos los hosts configurados, sus destinos internos y si son públicos.
+
+*   **Añadir o Actualizar un servicio:**
+    ```bash
+    ./REGIO add --host app.tudominio.com --target http://10.0.0.5:8080 [--public] [--bypass "X-My-Header:Value"]
+    ```
+    *   `--host`: El dominio público que escuchará ReGiO.
+    *   `--target`: La dirección interna del servicio.
+    *   `--public`: (Opcional) Si se incluye, el servicio no requerirá login para acceder.
+    *   `--bypass`: (Opcional) Define un header necesario para saltar la autenticación (para webhooks, etc).
+
+*   **Eliminar un servicio:**
+    ```bash
+    ./REGIO del --host app.tudominio.com
+    ```
+
+### Persistencia y Migración
+La configuración ya no depende de un archivo JSON. Se almacena en la tabla `servicios` de la base de datos SQLite. Al arrancar por primera vez con la nueva versión, ReGiO migrará automáticamente cualquier `config.json` existente a la base de datos.

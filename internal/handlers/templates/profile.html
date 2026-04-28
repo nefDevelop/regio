@@ -4,7 +4,7 @@
     <title>Mi Perfil - reGIO</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/static/reGIO.svg" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhH+PSw4N/eLaYccRs5KfBnv78C/jQ==" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/static/style.css" />
     <style>
       .token-alert {
@@ -39,6 +39,11 @@
           transform: translateY(0);
         }
       }
+    @media (max-width: 768px) {
+      .header { flex-direction: column; align-items: flex-start !important; gap: 16px; }
+      .header > div { width: 100%; justify-content: space-between; }
+      .section { padding: 16px !important; }
+    }
     </style>
   </head>
   <body class="profile-view">
@@ -87,7 +92,7 @@
       </p>
       <span class="token-value">{{.NewToken}}</span>
       <p style="font-size: 12px; color: var(--text-dim); text-align: center">
-        Úsalo en tus aplicaciones o como <code>?api_key=</code> en la URL.
+        Úsalo en tus aplicaciones con el header <code>X-API-Key</code>.
       </p>
     </div>
     {{end}}
@@ -118,6 +123,9 @@
         </div>
         <div style="margin-bottom: 20px">
           <input type="password" name="new_password" placeholder="Nueva contraseña (opcional)" />
+        </div>
+        <div style="margin-bottom: 20px">
+          <input type="password" name="current_password" placeholder="Contraseña actual (requerida para cambios)" />
         </div>
         <button class="btn-add">Guardar Cambios</button>
       </form>
@@ -153,6 +161,7 @@
       </form>
 
       {{if .Tokens}}
+      <div style="width: 100%; overflow-x: auto;">
       <table>
         <thead>
           <tr>
@@ -178,6 +187,7 @@
           {{end}}
         </tbody>
       </table>
+      </div>
       {{else}}
       <p
         style="
@@ -213,6 +223,7 @@
       </h3>
       <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 32px">Sesiones activas en otros dispositivos o navegadores.</p>
 
+      <div style="width: 100%; overflow-x: auto;">
       <table>
         <thead>
           <tr>
@@ -245,6 +256,7 @@
           {{end}}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="section">
