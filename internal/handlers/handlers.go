@@ -912,7 +912,7 @@ func RelTime(t time.Time) string {
 
 func isValidTarget(target string) error {
 	// Autocompletar esquema si falta
-	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+	if !strings.Contains(target, "://") {
 		target = "http://" + target
 	}
 
@@ -932,9 +932,18 @@ func isValidTarget(target string) error {
 		host = u.Host
 	}
 
-	// Bloquear loopback (localhost) solo por seguridad, pero permitir el resto de la red local
-	if !AllowLoopback && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
+	host = strings.TrimPrefix(host, "[")
+	host = strings.TrimSuffix(host, "]")
+
+	if !AllowLoopback && host == "localhost" {
 		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if !AllowLoopback && isPrivateIP(ip) {
+			return fmt.Errorf("no se permite apuntar a direcciones privadas o locales por seguridad")
+		}
 	}
 
 	return nil
