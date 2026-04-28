@@ -16,6 +16,7 @@
         background: rgba(15, 23, 42, 0.4);
         border-radius: 20px;
         border: 1px solid rgba(255, 255, 255, 0.05);
+        box-sizing: border-box;
       }
       .add-bridge-card h3 {
         margin: 0 0 20px 0;
@@ -24,67 +25,82 @@
         text-transform: uppercase;
         letter-spacing: 1px;
       }
-      .bridge-form-grid {
-        display: grid;
-        grid-template-columns: 1.5fr 1.5fr 1fr 2fr auto auto;
-        gap: 12px;
-        align-items: center;
+      .bridge-form-flex {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-end;
       }
-      .input-wrapper {
+      .input-group {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 6px;
+        flex: 1 1 200px;
+        min-width: 0; /* Permite que el flex-item se encoja */
       }
-      .input-wrapper label {
+      .input-group.small {
+        flex: 1 1 150px;
+      }
+      .input-group.large {
+        flex: 2 1 300px;
+      }
+      .input-group.auto {
+        flex: 0 0 auto;
+      }
+      .input-group label {
         font-size: 10px;
         font-weight: 800;
         color: #475569;
         text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .input-group input {
+        width: 100%;
+        box-sizing: border-box;
       }
       .token-field {
         display: flex;
         gap: 4px;
+        width: 100%;
       }
       .btn-gen-token {
         background: rgba(99, 102, 241, 0.1);
         border: 1px solid rgba(99, 102, 241, 0.2);
         color: #818cf8;
-        padding: 0 10px;
+        padding: 0 12px;
         border-radius: 8px;
         cursor: pointer;
+        transition: all 0.2s;
       }
       .btn-gen-token:hover { background: var(--primary-indigo); color: white; }
       
       .public-check {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         font-size: 13px;
         color: #94a3b8;
         cursor: pointer;
-        white-space: nowrap;
-        padding-top: 14px;
+        height: 42px; /* Alineado con los inputs */
+        padding: 0 4px;
       }
       .btn-create-bridge {
         background: var(--primary-indigo);
         color: white;
         border: none;
-        padding: 0 20px;
-        height: 40px;
-        border-radius: 10px;
+        padding: 0 28px;
+        height: 42px;
+        border-radius: 12px;
         font-weight: 700;
         cursor: pointer;
-        margin-top: 14px;
+        transition: transform 0.1s;
       }
-      @media (max-width: 1100px) {
-        .bridge-form-grid {
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 16px;
-        }
-        .btn-create-bridge, .public-check { margin-top: 0; height: 38px; }
-      }
+      .btn-create-bridge:active { transform: scale(0.98); }
+
       @media (max-width: 768px) {
-        .bridge-form-grid { grid-template-columns: 1fr; }
+        .bridge-form-flex { flex-direction: column; align-items: stretch; }
+        .input-group { flex: 1 1 auto; }
+        .public-check { height: auto; padding: 8px 0; }
       }
     </style>
   </head>
@@ -92,7 +108,7 @@
     <div class="header">
       <h1><img src="/static/reGIO.svg" alt="logo" style="height: 36px; margin-right: 12px; filter: invert(1)" />reGIO Admin</h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <a href="/profile" class="btn-logout btn-primary" style="border: none">Perfil</a>
+        <a href="/profile" class="btn-logout btn-primary" style="border: none">Mi Perfil</a>
         <a href="/logout" class="btn-del" style="padding: 12px; border-radius: 12px">Salir</a>
       </div>
     </div>
@@ -139,38 +155,42 @@
 
       <div class="add-bridge-card">
         <h3>Añadir Nuevo Puente + Bypass</h3>
-        <form method="POST" class="bridge-form-grid">
+        <form method="POST" class="bridge-form-flex">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="accion" value="add_service" />
 
-          <div class="input-wrapper">
-            <label>Hostname</label>
+          <div class="input-group">
+            <label>Hostname Público</label>
             <input type="text" name="host" list="domain-suggestions" placeholder="nas.tudominio.com" required />
           </div>
 
-          <div class="input-wrapper">
+          <div class="input-group">
             <label>Destino Local</label>
             <input type="text" name="target" list="target-suggestions" placeholder="http://192.168.1.10:80" required />
           </div>
 
-          <div class="input-wrapper">
+          <div class="input-group small">
             <label>Identidad Key</label>
             <input type="text" name="bypass_name" placeholder="Ej. GitHub" />
           </div>
 
-          <div class="input-wrapper">
+          <div class="input-group large">
             <label>Token Bypass (Opcional)</label>
             <div class="token-field">
               <input type="text" name="bypass_token" id="tk-out" placeholder="Generar ->" readonly style="background: rgba(0,0,0,0.2)" />
-              <button type="button" class="btn-gen-token" onclick="genTk()">Gen</button>
+              <button type="button" class="btn-gen-token" onclick="genTk()">Generar</button>
             </div>
           </div>
 
-          <label class="public-check">
-            <input type="checkbox" name="public" style="width: auto" /> Público
-          </label>
+          <div class="input-group auto">
+            <label class="public-check">
+              <input type="checkbox" name="public" style="width: auto" /> Público
+            </label>
+          </div>
 
-          <button type="submit" class="btn-create-bridge">Crear</button>
+          <div class="input-group auto">
+            <button type="submit" class="btn-create-bridge">Añadir Puente</button>
+          </div>
         </form>
       </div>
     </div>
@@ -200,57 +220,38 @@
       </form>
     </div>
 
-    <div class="section" style="border:1px solid rgba(251,191,36,0.2)">
-      <h2 style="color:#fbbf24">Bypass Keys Activas</h2>
-      <table>
-        <thead><tr><th>Identidad</th><th>Servicio</th><th>Token</th><th>Borrar</th></tr></thead>
-        <tbody>
-          {{range .BypassKeys}}
-          <tr>
-            <td style="color:#fbbf24; font-weight:600">{{.Name}}</td>
-            <td><code>{{.Host}}</code></td>
-            <td><code style="opacity:0.6">{{.Token}}</code></td>
-            <td>
-              <form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="delete_bypass_key"/><input type="hidden" name="token" value="{{.Token}}"/><button class="btn-del">Eliminar</button></form>
-            </td>
-          </tr>
-          {{else}}<tr><td colspan="4" style="text-align:center; padding:20px; color:#52525b">Sin llaves de bypass</td></tr>{{end}}
-        </tbody>
-      </table>
-    </div>
-
     <div class="section">
-      <h2>Fail2Ban & IPs Bloqueadas</h2>
-      <table>
-        <thead><tr><th>IP / Rango</th><th>Expiración</th><th>Acción</th></tr></thead>
-        <tbody>
-          {{range .BannedIPs}}
-          <tr><td style="color:#ef4444">{{.Target}}</td><td>{{.Hasta}}</td><td><form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="unban_ip"/><input type="hidden" name="target_ip" value="{{.Target}}"/><button class="btn-primary">Liberar</button></form></td></tr>
-          {{end}}
-        </tbody>
-      </table>
-      <form method="POST" style="display:flex; gap:12px; margin-top:20px"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"/><input type="hidden" name="accion" value="ban_ip"/><input type="text" name="target_ip" placeholder="IP a bloquear" required style="flex:1" /><button class="btn-del">Bloquear</button></form>
-    </div>
-
-    <div class="section">
-      <h2>Sesiones & Logs</h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px">
+      <h2>Seguridad & Sesiones</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px">
         <div>
-          <h3>Sesiones</h3>
+          <h3>IPs Bloqueadas (Fail2Ban)</h3>
+          <table>
+            <thead><tr><th>IP / Rango</th><th>Expiración</th><th>Acción</th></tr></thead>
+            <tbody>
+              {{range .BannedIPs}}
+              <tr><td style="color:#ef4444">{{.Target}}</td><td>{{.Hasta}}</td><td><form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="unban_ip"/><input type="hidden" name="target_ip" value="{{.Target}}"/><button class="btn-primary">Liberar</button></form></td></tr>
+              {{end}}
+            </tbody>
+          </table>
+          <form method="POST" style="display:flex; gap:12px; margin-top:16px"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"/><input type="hidden" name="accion" value="ban_ip"/><input type="text" name="target_ip" placeholder="IP a bloquear" required style="flex:1" /><button class="btn-del">Bloquear</button></form>
+        </div>
+        <div>
+          <h3>Sesiones Activas</h3>
           <table>
             {{range .AllSessions}}
-            <tr><td>{{.Username}}</td><td>{{.IP}}</td><td>{{if not .IsCurrent}}<form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="revoke_session"/><input type="hidden" name="token" value="{{.Token}}"/><button class="btn-del">X</button></form>{{end}}</td></tr>
+            <tr><td><strong>{{.Username}}</strong></td><td>{{.IP}}</td><td>{{if not .IsCurrent}}<form method="POST" style="margin:0"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"/><input type="hidden" name="accion" value="revoke_session"/><input type="hidden" name="token" value="{{.Token}}"/><button class="btn-del">X</button></form>{{end}}</td></tr>
             {{end}}
           </table>
         </div>
-        <div>
-          <h3>Eventos</h3>
-          <div style="max-height: 300px; overflow-y: auto; font-size: 12px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px">
-            {{range .Events}}
-            <div style="margin-bottom:4px"><span style="color:#71717a">{{.Timestamp}}</span> <span style="color:#818cf8">[{{.Performer}}]</span> {{.Message}}</div>
-            {{end}}
-          </div>
-        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Registro de Eventos</h2>
+      <div style="max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.1); border-radius: 12px; padding: 12px; font-family: ui-monospace, monospace; font-size: 12px">
+        {{range .Events}}
+        <div style="margin-bottom:6px; line-height: 1.4"><span style="color:#71717a">{{.Timestamp}}</span> <span style="color:#818cf8; font-weight: bold">[{{.Performer}}]</span> {{.Message}}</div>
+        {{end}}
       </div>
     </div>
 
