@@ -4,8 +4,8 @@ services:
     container_name: REGIO_seguro
     restart: always
     ports:
-      - "80:80"
-      - "443:443"
+      - "9999:8080"
+      - "8443:8443"
     env_file:
       - .env
     volumes:

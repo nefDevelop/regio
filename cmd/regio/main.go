@@ -43,7 +43,7 @@ func handleCLI() {
 		fmt.Println("\n📋 SERVICIOS CONFIGURADOS:")
 		fmt.Printf("%-30s %-30s %-10s %-20s\n", "HOST", "TARGET", "PUBLIC", "BYPASS HEADER")
 		fmt.Println(strings.Repeat("-", 95))
-		
+
 		var hosts []string
 		for h := range config.Servicios {
 			hosts = append(hosts, h)
