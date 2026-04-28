@@ -100,6 +100,9 @@
                     title="{{if .Alive}}Online{{else}}Offline{{end}}"
                   ></span>
                   <span>{{.Host}}</span>
+                  {{if index $.Config.Publicos .Host}}
+                  <span class="badge" style="background: rgba(34, 197, 94, 0.1); color: #4ade80; font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34, 197, 94, 0.2)">Público</span>
+                  {{end}}
                 </div>
                 <input
                   type="text"
@@ -111,7 +114,12 @@
                 />
               </td>
               <td style="font-family: ui-monospace, monospace; color: #a1a1aa">
-                <div class="view-mode" style="display: flex; align-items: center">{{.Target}}</div>
+                <div class="view-mode" style="display: flex; align-items: center; gap: 8px">
+                  {{.Target}}
+                  {{if index $.Config.BypassHeaders .Host}}
+                  <span class="badge" style="background: rgba(245, 158, 11, 0.1); color: #fbbf24; font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.2)" title="Bypass Header Activo: X-REGIO-Bypass">Bypass OK</span>
+                  {{end}}
+                </div>
                 <input
                   type="text"
                   form="form-{{.Host}}"
@@ -187,13 +195,18 @@
             />
           </div>
 
-          <div style="flex-grow: 1; min-width: 150px">
+          <div style="flex-grow: 1; min-width: 150px; display: flex; align-items: center; gap: 8px">
             <input
               type="text"
               name="bypass"
-              placeholder="Bypass Header (Opcional)"
-              style="width: 100%; margin: 0"
+              id="new-bypass-token"
+              placeholder="Token de Bypass"
+              readonly
+              style="width: 100%; margin: 0; background: rgba(0,0,0,0.2)"
             />
+            <button type="button" class="btn-primary" style="padding: 10px; margin: 0" onclick="generateBypass()" title="Generar Token Seguro">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3y-3.5"></path></svg>
+            </button>
           </div>
 
           <div style="display: flex; align-items: center; gap: 8px; margin: 0 10px">
@@ -203,6 +216,17 @@
 
           <button type="submit" class="btn-add" style="margin: 0">Añadir Puente</button>
         </form>
+
+        <script>
+          function generateBypass() {
+            const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let retVal = "rgbp_";
+            for (let i = 0; i < 24; ++i) {
+              retVal += charset.charAt(Math.floor(Math.random() * charset.length));
+            }
+            document.getElementById('new-bypass-token').value = retVal;
+          }
+        </script>
 
         <datalist id="domain-suggestions">
           {{range .HostSuggestions}}

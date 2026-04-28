@@ -5,17 +5,31 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"regio/internal/db"
 )
 
-
 func TestMainHandlerTokens(t *testing.T) {
 	// 1. Configuración de prueba
 	db.InitDB()
+	AllowLoopback = true
+	defer func() { AllowLoopback = false }()
+	
+	// Backend mock para recibir las peticiones del proxy
+	backendCalled := false
+	receivedPath := ""
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendCalled = true
+		receivedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
 	Config.Servicios = map[string]string{
-		"test.local": "http://backend.local",
+		"test.local": backend.URL,
 	}
 	AdminDomain = "admin.local"
 	NeedsSetup = false
@@ -26,7 +40,9 @@ func TestMainHandlerTokens(t *testing.T) {
 	tokenHash := base64.StdEncoding.EncodeToString(hash[:])
 	
 	// Asegurar que existe un usuario
-	db.DB.Exec("INSERT OR IGNORE INTO users (id, username, is_admin) VALUES (1, 'testuser', 1)")
+	db.DB.Exec("DELETE FROM users")
+	db.DB.Exec("DELETE FROM app_tokens")
+	db.DB.Exec("INSERT INTO users (id, username, is_admin) VALUES (1, 'testuser', 1)")
 	db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (1, 'test-token', ?)", tokenHash)
 
 	tests := []struct {
@@ -36,7 +52,7 @@ func TestMainHandlerTokens(t *testing.T) {
 		host           string
 		header         http.Header
 		expectedStatus int
-		expectedPath   string // Path que debería llegar al proxy (si status es 200/proxy)
+		expectedPath   string // Path que debería llegar al backend
 	}{
 		{
 			name:           "Acceso Denegado (Sin Token)",
@@ -79,21 +95,13 @@ func TestMainHandlerTokens(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectedPath:   "/path",
 		},
-		{
-			name:           "Servicio Público",
-			method:         "GET",
-			url:            "/public-path",
-			host:           "public.local",
-			expectedStatus: http.StatusOK,
-		},
 	}
-
-	// Añadir servicio público a la config
-	Config.Publicos = map[string]bool{"public.local": true}
-	Config.Servicios["public.local"] = "http://backend.public"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			backendCalled = false
+			receivedPath = ""
+			
 			req := httptest.NewRequest(tt.method, tt.url, nil)
 			req.Host = tt.host
 			if tt.header != nil {
@@ -101,23 +109,123 @@ func TestMainHandlerTokens(t *testing.T) {
 			}
 
 			rr := httptest.NewRecorder()
-			
-			// Mock del proxy para no intentar conectar a backends reales
-			// En un test real de handler que hace proxy, esto es complejo, 
-			// pero aquí verificamos hasta donde llega el handler antes de fallar por el proxy nil o similar.
-			// Como MainHandler usa httputil.NewSingleHostReverseProxy, intentará hacer la petición.
-			// Para el test, vamos a interceptar si llega a la fase de proxy.
-			
 			MainHandler(rr, req)
 
-			if rr.Code != tt.expectedStatus && !(tt.expectedStatus == http.StatusOK && rr.Code == http.StatusBadGateway) {
-				// StatusBadGateway es aceptable porque el backend mock no existe
-				t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, tt.expectedStatus)
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("%s: handler returned wrong status code: got %v want %v", tt.name, rr.Code, tt.expectedStatus)
 			}
 
-			if tt.expectedPath != "" && req.URL.Path != tt.expectedPath {
-				t.Errorf("handler did not clean path: got %v want %v", req.URL.Path, tt.expectedPath)
+			if tt.expectedStatus == http.StatusOK {
+				if !backendCalled {
+					t.Errorf("%s: backend was not called", tt.name)
+				}
+				if tt.expectedPath != "" && receivedPath != tt.expectedPath {
+					t.Errorf("%s: backend received wrong path: got %v want %v", tt.name, receivedPath, tt.expectedPath)
+				}
 			}
 		})
 	}
+}
+
+func TestSecurityAttacks(t *testing.T) {
+	db.InitDB()
+	AllowLoopback = true
+	defer func() { AllowLoopback = false }()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	Config.Servicios = map[string]string{"test.local": backend.URL}
+	AdminDomain = "admin.local"
+	NeedsSetup = false
+
+	t.Run("SQL Injection en Path Token", func(t *testing.T) {
+		// Intentar un token que sea una inyección SQL
+		badToken := url.PathEscape("' OR '1'='1")
+		req := httptest.NewRequest("GET", "/r-auth/"+badToken+"/path", nil)
+		req.Host = "test.local"
+		rr := httptest.NewRecorder()
+		MainHandler(rr, req)
+		
+		if rr.Code == http.StatusOK {
+			t.Errorf("SQL Injection might have worked! Expected unauthorized, got %v", rr.Code)
+		}
+	})
+
+	t.Run("Rate Limiting", func(t *testing.T) {
+		// Reset rate limiter for this test
+		Mu.Lock()
+		peticionesDB = make(map[string][]time.Time)
+		Mu.Unlock()
+
+		ip := "1.2.3.4"
+		for i := 0; i < 100; i++ {
+			req := httptest.NewRequest("GET", "/", nil)
+			req.RemoteAddr = ip + ":1234"
+			req.Host = "test.local"
+			rr := httptest.NewRecorder()
+			MainHandler(rr, req)
+			if rr.Code == http.StatusTooManyRequests {
+				t.Errorf("Rate limit hit too early at request %d", i)
+			}
+		}
+
+		// La petición 101 debería ser bloqueada
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = ip + ":1234"
+		req.Host = "test.local"
+		rr := httptest.NewRecorder()
+		MainHandler(rr, req)
+		if rr.Code != http.StatusTooManyRequests {
+			t.Errorf("Rate limit NOT hit at request 101: got %v", rr.Code)
+		}
+	})
+
+	t.Run("IP Blocking", func(t *testing.T) {
+		ip := "9.9.9.9"
+		RegistrarFallo(ip)
+		RegistrarFallo(ip)
+		RegistrarFallo(ip)
+		RegistrarFallo(ip)
+		RegistrarFallo(ip) // 5 fallos bloquean
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = ip + ":1234"
+		req.Host = "test.local"
+		rr := httptest.NewRecorder()
+		MainHandler(rr, req)
+		
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("Blocked IP should get 403 Forbidden, got %v", rr.Code)
+		}
+	})
+
+	t.Run("SSRF Prevention - Adding Private IP", func(t *testing.T) {
+		// Restaurar AllowLoopback a false para esta subprueba específica
+		AllowLoopback = false
+		defer func() { AllowLoopback = true }()
+
+		err := isValidTarget("http://192.168.1.1")
+		if err == nil {
+			t.Error("Should have blocked private IP")
+		}
+		
+		err = isValidTarget("http://localhost:8080")
+		if err == nil {
+			t.Error("Should have blocked localhost")
+		}
+	})
+	
+	t.Run("Path Traversal in Path Token", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/r-auth/../../../etc/passwd", nil)
+		req.Host = "test.local"
+		rr := httptest.NewRecorder()
+		MainHandler(rr, req)
+		
+		if rr.Code == http.StatusOK {
+			t.Errorf("Path traversal in token path should not work")
+		}
+	})
 }

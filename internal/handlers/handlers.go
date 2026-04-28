@@ -40,6 +40,7 @@ var (
 	SessionKey     = "REGIO_session"
 	Tmpls          *template.Template
 	TrustedProxies []string
+	AllowLoopback  bool // Solo para pruebas
 	// Transport personalizado para el proxy con validación DNS anti-rebinding (MED-04)
 	proxyTransport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -62,7 +63,7 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 
 	// Si ya es una IP, validarla directamente
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateIP(ip) || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		if !AllowLoopback && (isPrivateIP(ip) || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
 			return nil, fmt.Errorf("proxy bloqueado: IP restringida %s", ip)
 		}
 		dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
@@ -79,7 +80,7 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 	}
 
 	for _, ip := range ips {
-		if isPrivateIP(ip.IP) || ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() {
+		if !AllowLoopback && (isPrivateIP(ip.IP) || ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast()) {
 			db.LogEvent(fmt.Sprintf("⚠ SSRF bloqueado: %s resuelve a IP restringida %s", host, ip.IP), "Sistema")
 			return nil, fmt.Errorf("proxy bloqueado: %s resuelve a IP restringida %s", host, ip.IP)
 		}
@@ -837,14 +838,14 @@ func isValidTarget(target string) error {
 	}
 
 	// Bloquear loopback
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+	if !AllowLoopback && (host == "localhost" || host == "127.0.0.1" || host == "::1") {
 		return fmt.Errorf("no se permite apuntar a la interfaz de loopback")
 	}
 
 	// Bloquear TODAS las IPs privadas y restringidas
 	ip := net.ParseIP(host)
 	if ip != nil {
-		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || isPrivateIP(ip) {
+		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || isPrivateIP(ip)) {
 			return fmt.Errorf("IP privada o restringida")
 		}
 	} else {
@@ -852,7 +853,7 @@ func isValidTarget(target string) error {
 		ips, err := net.LookupIP(host)
 		if err == nil {
 			for _, resolvedIP := range ips {
-				if resolvedIP.IsLoopback() || isPrivateIP(resolvedIP) {
+				if !AllowLoopback && (resolvedIP.IsLoopback() || isPrivateIP(resolvedIP)) {
 					return fmt.Errorf("el dominio resuelve a una IP restringida")
 				}
 			}
@@ -988,9 +989,43 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validSession {
-		if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
-			user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
+		// 1. Verificar token en Path: /r-auth/TOKEN/actual-path
+		if strings.HasPrefix(r.URL.Path, "/r-auth/") {
+			rest := strings.TrimPrefix(r.URL.Path, "/r-auth/")
+			parts := strings.SplitN(rest, "/", 2)
+			if len(parts) >= 1 {
+				potentialToken := parts[0]
+				user, tokenUsed, validSession = auth.VerifyAppToken(potentialToken)
+				if validSession {
+					// Limpiar path para el backend
+					newPath := "/"
+					if len(parts) > 1 {
+						newPath += parts[1]
+					}
+					r.URL.Path = newPath
+				}
+			}
 		}
+
+		// 2. Verificar token en Query: ?api_key=TOKEN
+		if !validSession {
+			if apiKey := r.URL.Query().Get("api_key"); apiKey != "" {
+				user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
+				if validSession {
+					// Opcional: limpiar el parámetro de la query para que no llegue al backend
+					q := r.URL.Query()
+					q.Del("api_key")
+					r.URL.RawQuery = q.Encode()
+				}
+			}
+		}
+
+		if !validSession {
+			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+				user, tokenUsed, validSession = auth.VerifyAppToken(apiKey)
+			}
+		}
+
 		if !validSession {
 			reqUser, reqPass, ok := r.BasicAuth()
 			if ok {

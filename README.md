@@ -53,10 +53,6 @@ docker compose up -d --build
 
 ---
 
-## Guía de Autenticación para Aplicaciones
-
-reGIO utiliza el header **`X-API-Key`** como método estándar para evitar conflictos con los sistemas de autenticación de los servicios finales (como Gitea o Jenkins).
-
 ### 1. Uso con Git (Recomendado)
 Configura Git para enviar el token en la cabecera estándar de reGIO:
 
@@ -75,6 +71,31 @@ curl -H "X-API-Key: TU_TOKEN" http://api.tudominio.com/data
 # Fallback: Basic Auth (el token se usa como contraseña)
 curl -u "usuario:TU_TOKEN" http://api.tudominio.com/data
 ```
+
+### 3. Bypass Tokens (Para Robots y Webhooks)
+Si necesitas que un servicio automático (GitHub, UptimeRobot, etc.) acceda sin autenticación, utiliza un **Bypass Token**:
+1.  En el panel, pulsa el botón **Generar** junto al nuevo puente.
+2.  reGIO creará un token seguro (ej: `rgbp_abcd...`).
+3.  Configura tu servicio para que envíe la siguiente cabecera exacta:
+    *   **Header:** `X-REGIO-Bypass`
+    *   **Valor:** `TU_TOKEN_GENERADO`
+4.  Cualquier petición con esta combinación saltará la pantalla de login. Puedes **revocar** el acceso en cualquier momento eliminando el puente o actualizándolo sin el token.
+
+---
+
+## Gestión de Usuarios
+
+reGIO utiliza un sistema de **Invitaciones Seguras** para evitar el uso de contraseñas por defecto.
+
+### 1. Primer Usuario (Setup)
+Al instalar reGIO por primera vez, si la base de datos está vacía, al acceder a tu dominio administrativo serás redirigido a `/setup`. Aquí crearás la cuenta del administrador principal.
+
+### 2. Añadir nuevos usuarios
+1.  Entra al panel de administración.
+2.  En la sección **"Gestión de Usuarios"**, escribe el nombre del nuevo usuario y pulsa "Añadir".
+3.  reGIO generará un **Token de Invitación** único.
+4.  Copia la URL de invitación que aparecerá en el **Registro de Eventos** (ej: `https://tu-admin.com/REGIO-login?invite=abc...`).
+5.  Envía esa URL al usuario; él podrá establecer su contraseña y configurar su 2FA (TOTP) al acceder.
 
 ---
 
