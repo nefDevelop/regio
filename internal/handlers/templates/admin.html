@@ -22,7 +22,7 @@
       }
       .bridge-form-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr 140px;
+        grid-template-columns: 1fr 1fr minmax(140px, auto);
         gap: 16px;
         align-items: end;
       }
@@ -38,7 +38,8 @@
         color: var(--text-dim);
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        height: 12px;
+        min-height: 12px;
+        display: block;
       }
       .token-field {
         display: flex;
@@ -71,6 +72,8 @@
         transition: all 0.2s;
         user-select: none;
         margin: 0;
+        box-sizing: border-box;
+        white-space: nowrap;
         position: relative;
       }
       .public-check::before {
@@ -311,7 +314,13 @@
           <div class="input-group">
             <label>Token Bypass</label>
             <div class="token-field">
-              <input type="text" name="bypass_token" id="tk-out" placeholder="Token..." readonly style="background: rgba(0, 0, 0, 0.2)" />
+              <input
+                type="text"
+                name="bypass_token"
+                id="tk-out"
+                placeholder="Genera o pega uno..."
+                style="background: rgba(0, 0, 0, 0.2)"
+              />
               <button type="button" class="btn-gen-token" onclick="genTk()" style="padding: 0 12px; font-size: 12px">Gen</button>
             </div>
           </div>
@@ -571,12 +580,17 @@
       }
 
       document.addEventListener("DOMContentLoaded", function () {
-        const ipRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?\b/g;
+        // Expresión regular que captura un posible protocolo (ej: http://) en el grupo 1, y la IP en el grupo 2
+        const ipRegex =
+          /([a-zA-Z]+:\/\/)?\b((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?)\b/g;
         const eventEntries = document.querySelectorAll(".event-log-entry");
 
         eventEntries.forEach((entry) => {
           const originalHTML = entry.innerHTML;
-          const newHTML = originalHTML.replace(ipRegex, (ip) => {
+          const newHTML = originalHTML.replace(ipRegex, (match, protocol, ip) => {
+            // Si la IP es parte de una URL (tiene protocolo), la devolvemos intacta
+            if (protocol) return match;
+
             return (
               `<span style="color: #fbbf24; font-weight: 600;">${ip}</span>` +
               `<button onclick="copyToClipboard('${ip}', this)" class="copy-ip-btn" title="Copiar IP">` +
