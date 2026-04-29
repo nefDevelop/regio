@@ -170,6 +170,20 @@
         color: #fca5a5 !important;
         border: 1px solid rgba(239, 68, 68, 0.3) !important;
       }
+      .copy-ip-btn {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 0 4px;
+        margin-left: 4px;
+        vertical-align: middle;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s;
+        line-height: 1;
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -446,7 +460,7 @@
         "
       >
         {{range .Events}}
-        <div style="margin-bottom: 6px; line-height: 1.4">
+        <div class="event-log-entry" style="margin-bottom: 6px; line-height: 1.4">
           <span style="color: #71717a">{{.Timestamp}}</span>
           <span style="color: #818cf8; font-weight: bold">[{{.Performer}}]</span> {{.Message}}
         </div>
@@ -537,6 +551,42 @@
           f.submit();
         }
       }
+
+      function copyToClipboard(text, button) {
+        navigator.clipboard.writeText(text).then(
+          () => {
+            const originalContent = button.innerHTML;
+            button.innerHTML = "✓";
+            button.style.color = "#4ade80";
+            setTimeout(() => {
+              button.innerHTML = originalContent;
+              button.style.color = ""; // Revert to stylesheet color
+            }, 1500);
+          },
+          (err) => {
+            console.error("Error al copiar: ", err);
+            alert("No se pudo copiar la IP.");
+          },
+        );
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        const ipRegex = /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?\b/g;
+        const eventEntries = document.querySelectorAll(".event-log-entry");
+
+        eventEntries.forEach((entry) => {
+          const originalHTML = entry.innerHTML;
+          const newHTML = originalHTML.replace(ipRegex, (ip) => {
+            return (
+              `<span style="color: #fbbf24; font-weight: 600;">${ip}</span>` +
+              `<button onclick="copyToClipboard('${ip}', this)" class="copy-ip-btn" title="Copiar IP">` +
+              `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>` +
+              `</button>`
+            );
+          });
+          if (originalHTML !== newHTML) entry.innerHTML = newHTML;
+        });
+      });
     </script>
   </body>
 </html>
