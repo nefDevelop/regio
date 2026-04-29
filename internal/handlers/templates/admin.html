@@ -84,8 +84,13 @@
       }
       .custom-checkbox {
         appearance: none;
+        -webkit-appearance: none;
         width: 20px !important;
         height: 20px !important;
+        min-width: 20px;
+        min-height: 20px;
+        padding: 0;
+        box-sizing: border-box;
         flex-shrink: 0;
         border-radius: 6px;
         border: 2px solid rgba(255, 255, 255, 0.2);
