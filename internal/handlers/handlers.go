@@ -1041,7 +1041,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	sw.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	sw.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	sw.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+	sw.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com")
 
 	if !CheckRateLimit(ip) {
 		sw.status = http.StatusTooManyRequests
