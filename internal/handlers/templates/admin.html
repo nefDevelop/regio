@@ -22,154 +22,63 @@
       }
       .bridge-form-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr minmax(140px, auto);
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 16px;
         align-items: end;
       }
-
-      .token-field {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-      }
-      .btn-gen-token {
-        background: rgba(99, 102, 241, 0.1);
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        color: #818cf8;
-        padding: 0 16px;
-        border-radius: 12px;
-        height: 44px;
-        cursor: pointer;
-        font-weight: 600;
-      }
-      .public-check {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        font-weight: 500;
-        color: #cbd5e1;
-        cursor: pointer;
-        height: 44px;
-        transition: all 0.2s;
-        user-select: none;
-        position: relative;
-      }
-      .public-check::before {
-        content: attr(data-tooltip);
-        position: absolute;
-        bottom: calc(100% + 4px);
+      /* Modal Styles */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
         left: 0;
-        width: 220px;
-        background: #1e293b;
-        color: #f8fafc;
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-size: 12px;
-        line-height: 1.4;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.2s;
-        z-index: 100;
-        pointer-events: none;
-      }
-      .public-check:hover {
-        color: #f8fafc;
-      }
-      .public-check:hover::before {
-        opacity: 1;
-        visibility: visible;
-      }
-      .custom-checkbox {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 20px !important;
-        height: 20px !important;
-        min-width: 20px;
-        min-height: 20px;
-        padding: 0;
-        box-sizing: border-box;
-        flex-shrink: 0;
-        border-radius: 6px;
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        background: rgba(0, 0, 0, 0.3);
-        cursor: pointer;
-        position: relative;
-        margin: 0;
-        transition: all 0.2s;
-      }
-      .custom-checkbox:checked {
-        background: #6366f1;
-        border-color: #6366f1;
-      }
-      .custom-checkbox:checked::after {
-        content: "";
-        position: absolute;
-        left: 5px;
-        top: 1px;
-        width: 4px;
-        height: 9px;
-        border: solid white;
-        border-width: 0 2px 2px 0;
-        transform: rotate(45deg);
-      }
-      .btn-create-bridge {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-        color: white;
-        padding: 0 32px;
-        height: 44px;
-        border-radius: 12px;
-        font-weight: 700;
-      }
-      @media (max-width: 768px) {
-        .bridge-form-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .btn-header {
-        height: 44px !important;
-        width: 120px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        font-size: 14px !important;
-        box-sizing: border-box;
-        padding: 0 !important;
-      }
-      .btn-logout-custom {
-        background: rgba(239, 68, 68, 0.15) !important;
-        color: #fca5a5 !important;
-        border: 1px solid rgba(239, 68, 68, 0.3) !important;
-      }
-      .copy-ip-btn {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        cursor: pointer;
-        padding: 0 4px;
-        margin-left: 4px;
-        vertical-align: middle;
-        display: inline-flex;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(4px);
+        z-index: 1000;
         align-items: center;
         justify-content: center;
-        transition: color 0.2s;
-        line-height: 1;
       }
-      .csp-column {
-        max-width: 200px;
+      .modal-content {
+        background: #1e293b;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        width: 90%;
+        max-width: 600px;
+        padding: 32px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
       }
-      @media (max-width: 1000px) {
-        .csp-column {
-          display: none;
-        }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+      .modal-header h3 {
+        margin: 0;
+        color: #818cf8;
+      }
+      .csp-tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .csp-tag {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .csp-tag .remove {
+        color: #ef4444;
+        cursor: pointer;
+        font-weight: bold;
       }
     </style>
   </head>
@@ -209,7 +118,7 @@
             <tr>
               <th>Hostname</th>
               <th>Destino</th>
-              <th class="csp-column">CSP</th>
+              <th>Seguridad</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -230,11 +139,11 @@
                 <div class="view-mode" style="color: var(--text-muted); font-size: 13px">{{.Target}}</div>
                 <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none" />
               </td>
-              <td class="csp-column">
-                <div class="view-mode" style="color: #94a3b8; font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  {{index $.Config.CSPs .Host}}
-                </div>
-                <input type="text" form="form-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}" class="edit-mode" style="display: none; font-size: 11px;" placeholder="default-src 'self'..." />
+              <td>
+                <button class="btn-primary" onclick="openCspManager('{{.Host}}')" style="height: 32px; font-size: 11px; background: rgba(129, 140, 248, 0.1); border: 1px solid rgba(129, 140, 248, 0.2); color: #818cf8;">
+                  🛡️ Reglas CSP
+                </button>
+                <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
               </td>
               <td>
                 <div class="view-mode" style="display: flex; gap: 8px">
@@ -544,6 +453,37 @@
       </div>
     </div>
 
+    <div id="csp-modal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-host">Gestionar Reglas CSP</h3>
+          <button class="btn-logout" onclick="closeCspManager()" style="height: 32px; width: 32px; padding: 0">X</button>
+        </div>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 20px">
+          Añade o quita dominios permitidos para este puente. reGIO bloqueará cualquier otro recurso no listado aquí.
+        </p>
+
+        <div class="input-group">
+          <label>Añadir Nuevo Dominio/Recurso</label>
+          <div style="display: flex; gap: 8px">
+            <input type="text" id="new-csp-item" placeholder="ej: https://cdn.example.com" style="flex: 1" />
+            <button class="btn-success" onclick="addCspItem()" style="height: 44px">Permitir</button>
+          </div>
+        </div>
+
+        <div style="margin-top: 24px">
+          <label style="font-size: 12px; color: #64748b; text-transform: uppercase">Recursos Permitidos Actualmente</label>
+          <div id="csp-tags" class="csp-tag-list">
+            <!-- Tags will be injected here -->
+          </div>
+        </div>
+
+        <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px">
+          <button class="btn-primary" onclick="saveCspChanges()" style="height: 44px; padding: 0 24px">Guardar Cambios</button>
+        </div>
+      </div>
+    </div>
+
     <datalist id="domain-suggestions">
       {{range .HostSuggestions}}
       <option value="{{.}}">{{end}}</option>
@@ -554,33 +494,131 @@
     </datalist>
 
     <script>
+      var currentCspHost = "";
+      var currentCspItems = [];
+
+      function openCspManager(host) {
+        currentCspHost = host;
+        document.getElementById("modal-host").innerText = "CSP: " + host;
+        var hiddenInput = document.getElementById("csp-hidden-" + host);
+        var rawCsp = (hiddenInput ? hiddenInput.value : "") || "default-src 'self'";
+
+        // Parsear CSP simplificada
+        var items = [];
+        var parts = rawCsp.split(";");
+        for (var i = 0; i < parts.length; i++) {
+          var part = parts[i].trim();
+          if (part.length > 0 && !part.startsWith("report-uri") && !part.startsWith("default-src")) {
+            var subParts = part.split(" ");
+            for (var j = 1; j < subParts.length; j++) {
+              var item = subParts[j];
+              if (item !== "'self'" && item !== "'unsafe-inline'" && item !== "data:" && item.length > 0) {
+                if (items.indexOf(item) === -1) items.push(item);
+              }
+            }
+          }
+        }
+        currentCspItems = items;
+        renderCspTags();
+        document.getElementById("csp-modal").style.display = "flex";
+      }
+
+      function closeCspManager() {
+        document.getElementById("csp-modal").style.display = "none";
+      }
+
+      function renderCspTags() {
+        var container = document.getElementById("csp-tags");
+        container.innerHTML = "";
+
+        var selfTag = document.createElement("div");
+        selfTag.className = "csp-tag";
+        selfTag.style.opacity = "0.7";
+        selfTag.innerHTML = "<span>'self' (Local)</span>";
+        container.appendChild(selfTag);
+
+        for (var i = 0; i < currentCspItems.length; i++) {
+          (function(index) {
+            var item = currentCspItems[index];
+            var tag = document.createElement("div");
+            tag.className = "csp-tag";
+            tag.innerHTML = "<span>" + item + "</span><span class=\"remove\" onclick=\"removeCspItem(" + index + ")\">×</span>";
+            container.appendChild(tag);
+          })(i);
+        }
+      }
+
+      function addCspItem() {
+        var input = document.getElementById("new-csp-item");
+        var val = input.value.trim();
+        if (val && currentCspItems.indexOf(val) === -1) {
+          currentCspItems.push(val);
+          renderCspTags();
+          input.value = "";
+        }
+      }
+
+      function removeCspItem(index) {
+        currentCspItems.splice(index, 1);
+        renderCspTags();
+      }
+
+      function saveCspChanges() {
+        var domains = currentCspItems.join(" ");
+        var newCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' " + domains + "; style-src 'self' 'unsafe-inline' " + domains + "; img-src 'self' data: " + domains + "; connect-src 'self' " + domains + "; font-src 'self' " + domains + "; report-uri /api/csp-report";
+
+        var f = document.createElement("form");
+        f.method = "POST";
+        var a = function(n, v) {
+          var i = document.createElement("input");
+          i.type = "hidden";
+          i.name = n;
+          i.value = v;
+          f.appendChild(i);
+        };
+        a("accion", "update_service");
+        a("old_host", currentCspHost);
+        a("host", currentCspHost);
+        
+        var row = document.getElementById("row-" + currentCspHost);
+        var targetInput = row.querySelector("input[name='target']");
+        a("target", targetInput ? targetInput.value : "");
+        a("csp", newCsp);
+        a("csrf_token", "{{.CSRFToken}}");
+        document.body.appendChild(f);
+        f.submit();
+      }
+
       function genTk() {
-        const c = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let r = "rgbp_";
-        for (let i = 0; i < 32; i++) r += c[Math.floor(Math.random() * c.length)];
+        var c = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var r = "rgbp_";
+        for (var i = 0; i < 32; i++) r += c[Math.floor(Math.random() * c.length)];
         document.getElementById("tk-out").value = r;
       }
+
       function toggleEdit(h) {
-        const r = document.getElementById("row-" + h);
-        const v = r.querySelectorAll(".view-mode"),
-          b = r.querySelector(".btn-edit");
-        // Seleccionar solo inputs que no sean hidden para evitar errores de índice
-        const e = r.querySelectorAll("input.edit-mode");
+        var r = document.getElementById("row-" + h);
+        var v = r.querySelectorAll(".view-mode");
+        var b = r.querySelector(".btn-edit");
+        var e = r.querySelectorAll("input.edit-mode");
 
         if (b.innerText === "Editar") {
-          v.forEach((x) => (x.style.display = "none"));
-          e.forEach((x) => (x.style.display = "block"));
-          r.querySelector("div.edit-mode").style.display = "flex";
+          for (var i = 0; i < v.length; i++) v[i].style.display = "none";
+          for (var i = 0; i < e.length; i++) e[i].style.display = "block";
+          var editDiv = r.querySelector("div.edit-mode");
+          if (editDiv) editDiv.style.display = "flex";
           b.innerText = "Guardar";
         } else {
-          // El primer input visible es host, el segundo es target, el tercero es csp
-          const nh = e[0].value,
-            nt = e[1].value,
-            nc = e[2].value;
-          const f = document.createElement("form");
+          var nh = e[0].value;
+          var nt = e[1].value;
+          // Obtener CSP del input oculto, no de los inputs editables (ya que no hay uno visible)
+          var hiddenCsp = document.getElementById("csp-hidden-" + h);
+          var nc = hiddenCsp ? hiddenCsp.value : "";
+          
+          var f = document.createElement("form");
           f.method = "POST";
-          const a = (n, v) => {
-            const i = document.createElement("input");
+          var a = function(n, v) {
+            var i = document.createElement("input");
             i.type = "hidden";
             i.name = n;
             i.value = v;
@@ -599,39 +637,34 @@
 
       function copyToClipboard(text, button) {
         navigator.clipboard.writeText(text).then(
-          () => {
-            const originalContent = button.innerHTML;
+          function() {
+            var originalContent = button.innerHTML;
             button.innerHTML = "✓";
             button.style.color = "#4ade80";
-            setTimeout(() => {
+            setTimeout(function() {
               button.innerHTML = originalContent;
-              button.style.color = ""; // Revert to stylesheet color
+              button.style.color = "";
             }, 1500);
           },
-          (err) => {
+          function(err) {
             console.error("Error al copiar: ", err);
-            alert("No se pudo copiar la IP.");
-          },
+          }
         );
       }
 
       document.addEventListener("DOMContentLoaded", function () {
-        // Expresión regular que captura un posible protocolo (ej: http://) en el grupo 1, y la IP en el grupo 2
-        const ipRegex =
-          /([a-zA-Z]+:\/\/)?\b((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?)\b/g;
-        const eventEntries = document.querySelectorAll(".event-log-entry");
+        var ipRegex = /([a-zA-Z]+:\/\/)?\b((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?)\b/g;
+        var eventEntries = document.querySelectorAll(".event-log-entry");
 
-        eventEntries.forEach((entry) => {
-          const originalHTML = entry.innerHTML;
-          const newHTML = originalHTML.replace(ipRegex, (match, protocol, ip) => {
-            // Si la IP es parte de una URL (tiene protocolo), la devolvemos intacta
+        eventEntries.forEach(function(entry) {
+          var originalHTML = entry.innerHTML;
+          var newHTML = originalHTML.replace(ipRegex, function(match, protocol, ip) {
             if (protocol) return match;
-
             return (
-              `<span style="color: #fbbf24; font-weight: 600;">${ip}</span>` +
-              `<button onclick="copyToClipboard('${ip}', this)" class="copy-ip-btn" title="Copiar IP">` +
-              `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>` +
-              `</button>`
+              "<span style=\"color: #fbbf24; font-weight: 600;\">" + ip + "</span>" +
+              "<button onclick=\"copyToClipboard('" + ip + "', this)\" class=\"copy-ip-btn\" title=\"Copiar IP\">" +
+              "<svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"></rect><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"></path></svg>" +
+              "</button>"
             );
           });
           if (originalHTML !== newHTML) entry.innerHTML = newHTML;
