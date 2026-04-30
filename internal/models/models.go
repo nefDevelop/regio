@@ -9,6 +9,7 @@ type Config struct {
 	Servicios     map[string]string `json:"servicios"`
 	Publicos      map[string]bool   `json:"publicos"`
 	BypassHeaders map[string]string `json:"bypass_headers"` // Host -> "HeaderName:Value"
+	CSPs          map[string]string `json:"csps"`           // Host -> "CSP String"
 }
 
 type Intento struct {
@@ -51,4 +52,27 @@ type BypassKey struct {
 	Name      string
 	Host      string
 	CreatedAt string
+}
+
+type CSPReport struct {
+	ID                int
+	Host              string
+	BlockedURI        string
+	ViolatedDirective string
+	OriginalPolicy    string
+	CreatedAt         string
+}
+
+type CSPReportPayload struct {
+	CSPReport struct {
+		DocumentURI        string `json:"document-uri"`
+		Referrer           string `json:"referrer"`
+		ViolatedDirective  string `json:"violated-directive"`
+		EffectiveDirective string `json:"effective-directive"`
+		OriginalPolicy     string `json:"original-policy"`
+		Disposition        string `json:"disposition"`
+		BlockedURI         string `json:"blocked-uri"`
+		StatusCode         int    `json:"status-code"`
+		ScriptSample       string `json:"script-sample"`
+	} `json:"csp-report"`
 }

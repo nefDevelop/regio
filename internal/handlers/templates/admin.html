@@ -163,6 +163,14 @@
         transition: color 0.2s;
         line-height: 1;
       }
+      .csp-column {
+        max-width: 200px;
+      }
+      @media (max-width: 1000px) {
+        .csp-column {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -201,6 +209,7 @@
             <tr>
               <th>Hostname</th>
               <th>Destino</th>
+              <th class="csp-column">CSP</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -220,6 +229,12 @@
               <td>
                 <div class="view-mode" style="color: var(--text-muted); font-size: 13px">{{.Target}}</div>
                 <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none" />
+              </td>
+              <td class="csp-column">
+                <div class="view-mode" style="color: #94a3b8; font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  {{index $.Config.CSPs .Host}}
+                </div>
+                <input type="text" form="form-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}" class="edit-mode" style="display: none; font-size: 11px;" placeholder="default-src 'self'..." />
               </td>
               <td>
                 <div class="view-mode" style="display: flex; gap: 8px">
@@ -301,11 +316,54 @@
             </div>
           </div>
 
+          <div class="input-group" style="grid-column: span 2;">
+            <label>Content Security Policy (CSP)</label>
+            <input type="text" name="csp" placeholder="default-src 'self'; ..." style="font-size: 12px;" />
+          </div>
+
           <div class="input-group">
             <label>&nbsp;</label>
             <button type="submit" class="btn-create-bridge" style="width: 100%">Añadir</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size: 18px; margin-bottom: 20px; color: #818cf8;">Reportes de Seguridad (CSP)</h2>
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+        Aquí se muestran los recursos externos que ReGiO ha bloqueado. Puedes copiar estos dominios para añadirlos a la CSP de cada puente.
+      </p>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Host</th>
+              <th>Recurso Bloqueado</th>
+              <th>Directiva</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .CSPReports}}
+            <tr>
+              <td><span class="badge" style="background: rgba(99, 102, 241, 0.1); color: #818cf8;">{{.Host}}</span></td>
+              <td style="font-size: 12px; font-family: monospace;">
+                {{.BlockedURI}}
+                <button onclick="copyToClipboard('{{.BlockedURI}}', this)" class="copy-ip-btn" title="Copiar URL">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+              </td>
+              <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 10px;">{{.ViolatedDirective}}</span></td>
+              <td style="font-size: 11px; color: #64748b;">{{.CreatedAt}}</td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="4" style="text-align: center; color: #64748b; padding: 24px;">No hay reportes recientes.</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -477,7 +535,7 @@
         </div>
         <div style="background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #1e293b">
           <h3 style="font-size: 12px; text-transform: uppercase; color: #475569; margin-bottom: 10px">Añadir / Actualizar</h3>
-          <code style="color: #4ade80; font-size: 14px">./REGIO add --host app.io --target http://ip:80 [--public]</code>
+          <code style="color: #4ade80; font-size: 14px">./REGIO add --host app.io --target http://ip:80 [--public] [--csp "..."]</code>
         </div>
         <div style="background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #1e293b">
           <h3 style="font-size: 12px; text-transform: uppercase; color: #475569; margin-bottom: 10px">Eliminar</h3>
@@ -515,9 +573,10 @@
           r.querySelector("div.edit-mode").style.display = "flex";
           b.innerText = "Guardar";
         } else {
-          // El primer input visible es host, el segundo es target
+          // El primer input visible es host, el segundo es target, el tercero es csp
           const nh = e[0].value,
-            nt = e[1].value;
+            nt = e[1].value,
+            nc = e[2].value;
           const f = document.createElement("form");
           f.method = "POST";
           const a = (n, v) => {
@@ -531,6 +590,7 @@
           a("old_host", h);
           a("host", nh);
           a("target", nt);
+          a("csp", nc);
           a("csrf_token", "{{.CSRFToken}}");
           document.body.appendChild(f);
           f.submit();

@@ -39,49 +39,53 @@ func handleCLI() {
 	cmd := os.Args[1]
 	switch cmd {
 	case "list":
-		config, _ := db.LoadConfig()
-		fmt.Println("\n📋 SERVICIOS CONFIGURADOS:")
-		fmt.Printf("%-30s %-30s %-10s %-20s\n", "HOST", "TARGET", "PUBLIC", "BYPASS HEADER")
-		fmt.Println(strings.Repeat("-", 95))
+	        config, _ := db.LoadConfig()
+	        fmt.Println("\n📋 SERVICIOS CONFIGURADOS:")
+	        fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", "HOST", "TARGET", "PUBLIC", "BYPASS", "CSP")
+	        fmt.Println(strings.Repeat("-", 95))
 
-		var hosts []string
-		for h := range config.Servicios {
-			hosts = append(hosts, h)
-		}
-		sort.Strings(hosts)
+	        var hosts []string
+	        for h := range config.Servicios {
+	                hosts = append(hosts, h)
+	        }
+	        sort.Strings(hosts)
 
-		for _, h := range hosts {
-			isPublic := "No"
-			if config.Publicos[h] {
-				isPublic = "Sí"
-			}
-			bypass := config.BypassHeaders[h]
-			fmt.Printf("%-30s %-30s %-10s %-20s\n", h, config.Servicios[h], isPublic, bypass)
-		}
-		fmt.Println()
-		os.Exit(0)
+	        for _, h := range hosts {
+	                isPublic := "No"
+	                if config.Publicos[h] {
+	                        isPublic = "Sí"
+	                }
+	                bypass := config.BypassHeaders[h]
+	                csp := config.CSPs[h]
+	                if len(csp) > 20 {
+	                        csp = csp[:17] + "..."
+	                }
+	                fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", h, config.Servicios[h], isPublic, bypass, csp)
+	        }
+	        fmt.Println()
+	        os.Exit(0)
 
 	case "add":
-		addCmd := flag.NewFlagSet("add", flag.ExitOnError)
-		host := addCmd.String("host", "", "Dominio (ej: app.com)")
-		target := addCmd.String("target", "", "Destino interno (ej: http://10.0.0.5:8080)")
-		public := addCmd.Bool("public", false, "Hacer servicio público")
-		bypass := addCmd.String("bypass", "", "Header de bypass (ej: X-My-Key:Value)")
-		addCmd.Parse(os.Args[2:])
+	        addCmd := flag.NewFlagSet("add", flag.ExitOnError)
+	        host := addCmd.String("host", "", "Dominio (ej: app.com)")
+	        target := addCmd.String("target", "", "Destino interno (ej: http://10.0.0.5:8080)")
+	        public := addCmd.Bool("public", false, "Hacer servicio público")
+	        bypass := addCmd.String("bypass", "", "Header de bypass (ej: X-My-Key:Value)")
+	        csp := addCmd.String("csp", "", "Content Security Policy")
+	        addCmd.Parse(os.Args[2:])
 
-		if *host == "" || *target == "" {
-			fmt.Println("✕ Error: --host y --target son obligatorios")
-			addCmd.Usage()
-			os.Exit(1)
-		}
+	        if *host == "" || *target == "" {
+	                fmt.Println("✕ Error: --host y --target son obligatorios")
+	                addCmd.Usage()
+	                os.Exit(1)
+	        }
 
-		err := db.AddService(*host, *target, *public, *bypass)
-		if err != nil {
-			log.Fatalf("✕ Error guardando servicio: %v", err)
-		}
-		fmt.Printf("✅ Servicio añadido/actualizado: %s -> %s (Público: %v)\n", *host, *target, *public)
-		os.Exit(0)
-
+	        err := db.AddService(*host, *target, *public, *bypass, *csp)
+	        if err != nil {
+	                log.Fatalf("✕ Error guardando servicio: %v", err)
+	        }
+	        fmt.Printf("✅ Servicio añadido/actualizado: %s -> %s (Público: %v)\n", *host, *target, *public)
+	        os.Exit(0)
 	case "del":
 		delCmd := flag.NewFlagSet("del", flag.ExitOnError)
 		host := delCmd.String("host", "", "Dominio a eliminar")

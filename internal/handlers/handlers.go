@@ -6,8 +6,10 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -54,6 +56,8 @@ var (
 		ResponseHeaderTimeout: 10 * time.Second,
 	}
 )
+
+const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; report-uri /api/csp-report"
 
 // safeDialContext resuelve DNS y valida que la IP no sea privada antes de conectar.
 // Previene ataques SSRF por DNS rebinding (TOCTOU).
@@ -356,6 +360,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		case "add_service":
 			host := r.FormValue("host")
 			target := r.FormValue("target")
+			csp := r.FormValue("csp")
 			if host != "" && target != "" {
 				if err := isValidTarget(target); err != nil {
 					db.LogEvent(fmt.Sprintf("⚠ Intento de añadir target inválido/SSRF: %s -> %s (%v)", host, target, err), user.Username)
@@ -372,9 +377,13 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				if Config.BypassHeaders == nil {
 					Config.BypassHeaders = make(map[string]string)
 				}
+				if Config.CSPs == nil {
+					Config.CSPs = make(map[string]string)
+				}
 
 				Config.Servicios[host] = target
 				Config.Publicos[host] = r.FormValue("public") == "on"
+				Config.CSPs[host] = csp
 				
 				// Gestión de Bypass Key integrada
 				bypassName := r.FormValue("bypass_name")
@@ -393,6 +402,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			host := r.FormValue("old_host")
 			newHost := r.FormValue("host")
 			target := r.FormValue("target")
+			csp := r.FormValue("csp")
 			if host != "" && newHost != "" && target != "" {
 				if err := isValidTarget(target); err != nil {
 					db.LogEvent(fmt.Sprintf("⚠ Intento de actualizar target inválido/SSRF: %s -> %s (%v)", newHost, target, err), user.Username)
@@ -402,6 +412,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Mu.Lock()
 				if Config.Servicios == nil {
 					Config.Servicios = make(map[string]string)
+				}
+				if Config.CSPs == nil {
+					Config.CSPs = make(map[string]string)
 				}
 				delete(Config.Servicios, host)
 				Config.Servicios[newHost] = target
@@ -414,6 +427,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				delete(Config.BypassHeaders, host)
 				Config.BypassHeaders[newHost] = bypass
 
+				delete(Config.CSPs, host)
+				Config.CSPs[newHost] = csp
+
 				db.SaveConfig(Config)
 				Mu.Unlock()
 				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target), user.Username)
@@ -424,6 +440,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			delete(Config.Servicios, host)
 			delete(Config.Publicos, host)
 			delete(Config.BypassHeaders, host)
+			delete(Config.CSPs, host)
 			db.SaveConfig(Config)
 			Mu.Unlock()
 			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
@@ -620,6 +637,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		TargetSuggestions []string
 		HealthResults     []ServiceStatus
 		AllSessions       []GlobalSessionDisplay
+		CSPReports        []models.CSPReport
 	}{
 		Config:            Config,
 		Users:             users,
@@ -631,6 +649,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		TargetSuggestions: targets,
 		HealthResults:     healthResults,
 		AllSessions:       allSessions,
+		CSPReports:        db.GetRecentCSPReports(20),
 	}
 	Tmpls.ExecuteTemplate(w, "admin.html", data)
 }
@@ -1019,7 +1038,43 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
+func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return
+	}
+	defer r.Body.Close()
+
+	var payload models.CSPReportPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return
+	}
+
+	report := payload.CSPReport
+	if report.BlockedURI != "" {
+		host := r.Host
+		if report.DocumentURI != "" {
+			if u, err := url.Parse(report.DocumentURI); err == nil {
+				host = u.Host
+			}
+		}
+		db.SaveCSPReport(host, report.BlockedURI, report.ViolatedDirective, report.OriginalPolicy)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func MainHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/csp-report" {
+		HandleCSPReport(w, r)
+		return
+	}
+
 	sw := &statusWriter{ResponseWriter: w, status: 200}
 	ip := getRealIP(r)
 
@@ -1041,7 +1096,19 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	sw.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	sw.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	sw.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com")
+
+	Mu.Lock()
+	customCSP := Config.CSPs[r.Host]
+	Mu.Unlock()
+
+	if customCSP != "" {
+		if !strings.Contains(customCSP, "report-uri") {
+			customCSP += "; report-uri /api/csp-report"
+		}
+		sw.Header().Set("Content-Security-Policy", customCSP)
+	} else {
+		sw.Header().Set("Content-Security-Policy", DefaultCSP)
+	}
 
 	if !CheckRateLimit(ip) {
 		sw.status = http.StatusTooManyRequests

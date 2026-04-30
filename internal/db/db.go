@@ -96,11 +96,28 @@ func InitDB() {
 		host TEXT PRIMARY KEY,
 		target TEXT NOT NULL,
 		is_public BOOLEAN DEFAULT 0,
-		bypass_header TEXT DEFAULT ''
+		bypass_header TEXT DEFAULT '',
+		csp TEXT DEFAULT ''
 	);`
 	_, err = DB.Exec(createServicesTable)
 	if err != nil {
 		log.Fatal("Error creando tabla servicios:", err)
+	}
+	DB.Exec("ALTER TABLE servicios ADD COLUMN csp TEXT DEFAULT '';")
+
+	// Nueva tabla de reportes CSP
+	createCSPReportsTable := `
+	CREATE TABLE IF NOT EXISTS csp_reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		host TEXT,
+		blocked_uri TEXT,
+		violated_directive TEXT,
+		original_policy TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, err = DB.Exec(createCSPReportsTable)
+	if err != nil {
+		log.Fatal("Error creando tabla csp_reports:", err)
 	}
 
 	// Nueva tabla de API Keys para Bypass
@@ -135,13 +152,14 @@ func SaveConfig(config models.Config) error {
 	// Limpiar tabla actual para reemplazo total (como hacía el JSON)
 	_, _ = tx.Exec("DELETE FROM servicios")
 
-	stmt, _ := tx.Prepare("INSERT INTO servicios (host, target, is_public, bypass_header) VALUES (?, ?, ?, ?)")
+	stmt, _ := tx.Prepare("INSERT INTO servicios (host, target, is_public, bypass_header, csp) VALUES (?, ?, ?, ?, ?)")
 	defer stmt.Close()
 
 	for host, target := range config.Servicios {
 		isPublic := config.Publicos[host]
 		bypass := config.BypassHeaders[host]
-		_, err = stmt.Exec(host, target, isPublic, bypass)
+		csp := config.CSPs[host]
+		_, err = stmt.Exec(host, target, isPublic, bypass, csp)
 		if err != nil {
 			return err
 		}
@@ -156,6 +174,7 @@ func LoadConfig() (models.Config, error) {
 		Servicios:     make(map[string]string),
 		Publicos:      make(map[string]bool),
 		BypassHeaders: make(map[string]string),
+		CSPs:          make(map[string]string),
 	}
 
 	// 1. Verificar si existe config.json para migración
@@ -176,21 +195,22 @@ func LoadConfig() (models.Config, error) {
 	}
 
 	// 2. Cargar desde DB
-	rows, err := DB.Query("SELECT host, target, is_public, bypass_header FROM servicios")
+	rows, err := DB.Query("SELECT host, target, is_public, bypass_header, COALESCE(csp, '') FROM servicios")
 	if err != nil {
 		return config, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var host, target, bypass string
+		var host, target, bypass, csp string
 		var isPublic bool
-		if err := rows.Scan(&host, &target, &isPublic, &bypass); err == nil {
+		if err := rows.Scan(&host, &target, &isPublic, &bypass, &csp); err == nil {
 			config.Servicios[host] = target
 			config.Publicos[host] = isPublic
 			if bypass != "" {
 				config.BypassHeaders[host] = bypass
 			}
+			config.CSPs[host] = csp
 		}
 	}
 
@@ -198,14 +218,37 @@ func LoadConfig() (models.Config, error) {
 }
 
 // Métodos individuales para el CLI
-func AddService(host, target string, isPublic bool, bypass string) error {
-	_, err := DB.Exec("INSERT OR REPLACE INTO servicios (host, target, is_public, bypass_header) VALUES (?, ?, ?, ?)", host, target, isPublic, bypass)
+func AddService(host, target string, isPublic bool, bypass string, csp string) error {
+	_, err := DB.Exec("INSERT OR REPLACE INTO servicios (host, target, is_public, bypass_header, csp) VALUES (?, ?, ?, ?, ?)", host, target, isPublic, bypass, csp)
 	return err
 }
 
 func DeleteService(host string) error {
 	_, err := DB.Exec("DELETE FROM servicios WHERE host = ?", host)
 	return err
+}
+
+func SaveCSPReport(host, blocked, directive, policy string) {
+	_, err := DB.Exec("INSERT INTO csp_reports (host, blocked_uri, violated_directive, original_policy) VALUES (?, ?, ?, ?)", host, blocked, directive, policy)
+	if err != nil {
+		log.Printf("❌ Error guardando reporte CSP: %v", err)
+	}
+}
+
+func GetRecentCSPReports(limit int) []models.CSPReport {
+	var reports []models.CSPReport
+	rows, err := DB.Query("SELECT id, host, blocked_uri, violated_directive, original_policy, datetime(created_at, 'localtime') FROM csp_reports ORDER BY id DESC LIMIT ?", limit)
+	if err != nil {
+		return reports
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r models.CSPReport
+		rows.Scan(&r.ID, &r.Host, &r.BlockedURI, &r.ViolatedDirective, &r.OriginalPolicy, &r.CreatedAt)
+		reports = append(reports, r)
+	}
+	return reports
 }
 
 // Funciones para Gestión de Bypass Keys

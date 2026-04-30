@@ -28,10 +28,19 @@
 
 Puedes gestionar tus servicios sin entrar a la web:
 ```bash
-./REGIO list                           # Ver servicios
-./REGIO add --host app.io --target http://10.0.0.1:80 # Añadir
+./REGIO list                           # Ver servicios y sus CSPs
+./REGIO add --host app.io --target http://10.0.0.1:80 --csp "default-src 'self'..." # Añadir/Actualizar
 ./REGIO del --host app.io              # Eliminar
 ```
+
+---
+
+## Gestión de Seguridad Avanzada (CSP)
+
+reGIO incluye un sistema de **Content Security Policy (CSP)** dinámico:
+- **Reportes en tiempo real**: Los bloqueos de recursos externos se muestran en el panel de administración.
+- **Configuración por puente**: Cada servicio puede tener su propia política de seguridad.
+- **Flujo Discover & Allow**: Copia las URLs bloqueadas desde la sección de reportes y añádelas a la CSP del puente correspondiente para permitir solo lo que el servicio necesita para funcionar.
 
 ---
 
