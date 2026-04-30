@@ -65,7 +65,8 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 
 	// Si ya es una IP, validarla directamente
 	if ip := net.ParseIP(host); ip != nil {
-		if !AllowLoopback && (isPrivateIP(ip) || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
+			db.LogEvent(fmt.Sprintf("⚠ Bloqueo de conexión directa a IP restringida: %s", ip), "Sistema")
 			return nil, fmt.Errorf("proxy bloqueado: IP restringida %s", ip)
 		}
 		dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
@@ -82,7 +83,7 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 	}
 
 	for _, ip := range ips {
-		if !AllowLoopback && (isPrivateIP(ip.IP) || ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast()) {
+		if !AllowLoopback && (ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() || ip.IP.IsUnspecified()) {
 			db.LogEvent(fmt.Sprintf("⚠ SSRF bloqueado: %s resuelve a IP restringida %s", host, ip.IP), "Sistema")
 			return nil, fmt.Errorf("proxy bloqueado: %s resuelve a IP restringida %s", host, ip.IP)
 		}
@@ -935,16 +936,14 @@ func isValidTarget(target string) error {
 	host = strings.TrimPrefix(host, "[")
 	host = strings.TrimSuffix(host, "]")
 
-	if !AllowLoopback && host == "localhost" {
-		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
-	}
-
 	ip := net.ParseIP(host)
 	if ip != nil {
-		if !AllowLoopback && ip.IsLoopback() {
-			return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
+		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
+			return fmt.Errorf("no se permite apuntar a la interfaz de loopback o IPs restringidas por seguridad")
 		}
 		// Permitimos redes privadas (RFC 1918) porque reGIO es para proteger servicios internos.
+	} else if !AllowLoopback && host == "localhost" {
+		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
 	}
 
 	return nil

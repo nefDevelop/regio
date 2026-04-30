@@ -208,8 +208,8 @@ func TestSecurityAttacks(t *testing.T) {
 		defer func() { AllowLoopback = true }()
 
 		err := isValidTarget("http://192.168.1.1")
-		if err == nil {
-			t.Error("Should have blocked private IP")
+		if err != nil {
+			t.Errorf("Private IP (RFC 1918) should be allowed, but got error: %v", err)
 		}
 		
 		err = isValidTarget("http://localhost:8080")

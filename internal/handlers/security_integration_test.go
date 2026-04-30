@@ -87,11 +87,13 @@ func TestSSRFProtection(t *testing.T) {
 		{"http://localhost:8080", true, "Loopback localhost"},
 		{"http://127.0.0.1:8080", true, "Loopback IPv4"},
 		{"http://[::1]:8080", true, "Loopback IPv6"},
-		{"http://10.0.0.1:80", true, "RFC1918 clase A"},
-		{"http://172.16.0.1:80", true, "RFC1918 clase B"},
-		{"http://172.31.255.255:80", true, "RFC1918 clase B límite"},
-		{"http://192.168.1.1:80", true, "RFC1918 clase C"},
 		{"http://169.254.1.1:80", true, "Link-local IPv4"},
+
+		// Debe permitir (RFC 1918 para servicios internos)
+		{"http://10.0.0.1:80", false, "RFC1918 clase A"},
+		{"http://172.16.0.1:80", false, "RFC1918 clase B"},
+		{"http://172.31.255.255:80", false, "RFC1918 clase B límite"},
+		{"http://192.168.1.1:80", false, "RFC1918 clase C"},
 
 		// Debe permitir
 		{"http://8.8.8.8:80", false, "IP pública Google DNS"},
