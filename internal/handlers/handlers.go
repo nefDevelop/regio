@@ -57,7 +57,9 @@ var (
 	}
 )
 
-const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; report-uri /api/csp-report"
+const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; report-uri /api/csp-report"
+
+// safeDialContext... (mantener igual)
 
 // safeDialContext resuelve DNS y valida que la IP no sea privada antes de conectar.
 // Previene ataques SSRF por DNS rebinding (TOCTOU).
@@ -1046,24 +1048,37 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		log.Printf("❌ Error leyendo cuerpo de reporte CSP: %v", err)
 		return
 	}
 	defer r.Body.Close()
 
 	var payload models.CSPReportPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
+		// Algunos navegadores envían el reporte sin el wrapper "csp-report" en versiones experimentales
+		// o con diferentes Content-Type. Intentamos parsear logueando el error.
+		log.Printf("⚠️ Error parseando reporte CSP: %v (Body: %s)", err, string(body))
 		return
 	}
 
 	report := payload.CSPReport
-	if report.BlockedURI != "" {
+	// Guardar reporte si hay URI bloqueada O si hay directiva violada (para inline/eval)
+	if report.BlockedURI != "" || report.ViolatedDirective != "" {
 		host := r.Host
 		if report.DocumentURI != "" {
 			if u, err := url.Parse(report.DocumentURI); err == nil {
 				host = u.Host
 			}
 		}
-		db.SaveCSPReport(host, report.BlockedURI, report.ViolatedDirective, report.OriginalPolicy)
+
+		blocked := report.BlockedURI
+		if blocked == "" {
+			blocked = "inline/eval/other"
+		}
+
+		db.SaveCSPReport(host, blocked, report.ViolatedDirective, report.OriginalPolicy)
+		db.LogEvent(fmt.Sprintf("🛡️ Bloqueo CSP en %s: %s (Directiva: %s)", host, blocked, report.ViolatedDirective), "Sistema")
+		log.Printf("🛡️ Reporte CSP recibido para %s: %s violó %s", host, blocked, report.ViolatedDirective)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -1100,6 +1115,17 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	Mu.Lock()
 	customCSP := Config.CSPs[r.Host]
 	Mu.Unlock()
+
+	if r.Host == AdminDomain {
+		// El admin necesita unsafe-eval para qrcode.js
+		if customCSP != "" {
+			if !strings.Contains(customCSP, "'unsafe-eval'") {
+				customCSP = strings.Replace(customCSP, "script-src", "script-src 'unsafe-eval'", 1)
+			}
+		} else {
+			customCSP = strings.Replace(DefaultCSP, "script-src 'self'", "script-src 'self' 'unsafe-eval'", 1)
+		}
+	}
 
 	if customCSP != "" {
 		if !strings.Contains(customCSP, "report-uri") {

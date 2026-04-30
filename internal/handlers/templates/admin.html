@@ -241,16 +241,17 @@
     <div class="section">
       <h2 style="font-size: 18px; margin-bottom: 20px; color: #818cf8;">Reportes de Seguridad (CSP)</h2>
       <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
-        Aquí se muestran los recursos externos que ReGiO ha bloqueado. Puedes copiar estos dominios para añadirlos a la CSP de cada puente.
+        Aquí se muestran los recursos externos que ReGiO ha bloqueado. Puedes permitir estos dominios haciendo clic en el botón "Permitir".
       </p>
       <div style="width: 100%; overflow-x: auto">
         <table>
           <thead>
             <tr>
-              <th>Host</th>
+              <th>Host (Puente)</th>
               <th>Recurso Bloqueado</th>
               <th>Directiva</th>
               <th>Fecha</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -265,10 +266,15 @@
               </td>
               <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 10px;">{{.ViolatedDirective}}</span></td>
               <td style="font-size: 11px; color: #64748b;">{{.CreatedAt}}</td>
+              <td>
+                <button onclick="quickAllow('{{.Host}}', '{{.BlockedURI}}')" class="btn-success" style="height: 28px; padding: 0 10px; font-size: 10px;">
+                  Permitir
+                </button>
+              </td>
             </tr>
             {{else}}
             <tr>
-              <td colspan="4" style="text-align: center; color: #64748b; padding: 24px;">No hay reportes recientes.</td>
+              <td colspan="5" style="text-align: center; color: #64748b; padding: 24px;">No hay reportes recientes.</td>
             </tr>
             {{end}}
           </tbody>
@@ -563,9 +569,58 @@
         renderCspTags();
       }
 
+      function quickAllow(host, url) {
+        if (url === "inline/eval/other") {
+          alert("Este bloqueo es interno (inline style/script). Edita la CSP manualmente para permitir 'unsafe-inline' o 'unsafe-eval' si es necesario.");
+          return;
+        }
+        
+        try {
+          var domain = "";
+          if (url.startsWith("http")) {
+            var u = new URL(url);
+            domain = u.origin;
+          } else {
+            domain = url;
+          }
+          
+          if (confirm("¿Deseas permitir el dominio " + domain + " para el host " + host + "?")) {
+            currentCspHost = host;
+            var hiddenInput = document.getElementById("csp-hidden-" + host);
+            var rawCsp = (hiddenInput ? hiddenInput.value : "") || "default-src 'self'";
+            
+            // Extraer items actuales
+            var items = [];
+            var parts = rawCsp.split(";");
+            for (var i = 0; i < parts.length; i++) {
+              var part = parts[i].trim();
+              if (part.length > 0 && !part.startsWith("report-uri") && !part.startsWith("default-src")) {
+                var subParts = part.split(" ");
+                for (var j = 1; j < subParts.length; j++) {
+                  var item = subParts[j];
+                  if (item !== "'self'" && item !== "'unsafe-inline'" && item !== "data:" && item.length > 0) {
+                    if (items.indexOf(item) === -1) items.push(item);
+                  }
+                }
+              }
+            }
+            
+            if (items.indexOf(domain) === -1) {
+              items.push(domain);
+            }
+            currentCspItems = items;
+            saveCspChanges();
+          }
+        } catch (e) {
+          alert("No se pudo procesar la URL: " + url);
+        }
+      }
+
       function saveCspChanges() {
         var domains = currentCspItems.join(" ");
-        var newCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' " + domains + "; style-src 'self' 'unsafe-inline' " + domains + "; img-src 'self' data: " + domains + "; connect-src 'self' " + domains + "; font-src 'self' " + domains + "; report-uri /api/csp-report";
+        var allDomains = domains.trim();
+        
+        var newCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' " + allDomains + "; style-src 'self' 'unsafe-inline' " + allDomains + "; img-src 'self' data: " + allDomains + "; connect-src 'self' " + allDomains + "; font-src 'self' " + allDomains + "; report-uri /api/csp-report";
 
         var f = document.createElement("form");
         f.method = "POST";
