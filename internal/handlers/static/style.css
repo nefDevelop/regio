@@ -89,7 +89,7 @@ table input.edit-mode {
 }
 
 /* BUTTONS */
-button, .btn, .btn-primary, .btn-success, .btn-danger, .btn-del, .btn-edit, .btn-logout {
+button, .btn, .btn-primary, .btn-success, .btn-danger, .btn-del, .btn-edit, .btn-logout, .btn-add, .btn-gen-token, .btn-create-bridge {
   outline: none; border: none; cursor: pointer; font-weight: 600;
   transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center;
   height: 42px; padding: 0 20px; border-radius: 10px; font-size: 13px;
@@ -97,7 +97,7 @@ button, .btn, .btn-primary, .btn-success, .btn-danger, .btn-del, .btn-edit, .btn
 }
 
 .btn-primary { background: #6366f1; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
-.btn-success { background: #10b981; color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+.btn-success, .btn-add { background: #10b981; color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
 .btn-danger { background: #ef4444; color: white; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
 
 .btn-del {
@@ -117,6 +117,35 @@ button, .btn, .btn-primary, .btn-success, .btn-danger, .btn-del, .btn-edit, .btn
   height: 32px;
   padding: 0 12px;
   font-size: 11px;
+}
+
+.btn-gen-token {
+  background: rgba(99, 102, 241, 0.1);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+}
+
+.btn-create-bridge {
+  background: var(--success) !important;
+  color: white !important;
+  height: 44px !important;
+  width: 100% !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
+}
+
+.compact {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+  width: auto;
+}
+
+.width-100 {
+  width: 100%;
 }
 
 button:hover { transform: translateY(-1px); filter: brightness(1.2); }
