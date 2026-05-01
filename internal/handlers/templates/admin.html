@@ -622,9 +622,6 @@
         // Setup CSP form hidden inputs
         var hiddenInput = document.getElementById("csp-hidden-" + host);
         var rawCsp = (hiddenInput ? hiddenInput.value : "") || "default-src 'self'";
-        document.getElementById("csp-old-host").value = host;
-        document.getElementById("csp-new-host").value = host;
-        document.getElementById("csp-target").value = target;
 
         // Parsear CSP simplificada para los tags
         var items = [];
