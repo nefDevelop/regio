@@ -235,8 +235,8 @@
                 <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none" />
               </td>
               <td>
-                <button class="btn-edit" onclick="openCspManager('{{.Host}}')">
-                  Reglas CSP
+                <button class="btn-edit" onclick="openServiceModal('{{.Host}}', '{{.Target}}')">
+                  Gestionar
                 </button>
                 <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
               </td>
@@ -325,50 +325,6 @@
             <button type="submit" class="btn-create-bridge">Añadir</button>
           </div>
         </form>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2 style="font-size: 18px; margin-bottom: 20px; color: #818cf8;">Reportes de Seguridad (CSP)</h2>
-      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
-        Aquí se muestran los recursos externos que ReGiO ha bloqueado. Puedes permitir estos dominios haciendo clic en el botón "Permitir".
-      </p>
-      <div style="width: 100%; overflow-x: auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Host (Puente)</th>
-              <th>Recurso Bloqueado</th>
-              <th>Directiva</th>
-              <th>Fecha</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{range .CSPReports}}
-            <tr>
-              <td><span class="badge" style="background: rgba(99, 102, 241, 0.1); color: #818cf8;">{{.Host}}</span></td>
-              <td style="font-size: 12px; font-family: monospace;">
-                {{.BlockedURI}}
-                <button onclick="copyToClipboard('{{.BlockedURI}}', this)" class="copy-ip-btn" title="Copiar URL">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                </button>
-              </td>
-              <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 10px;">{{.ViolatedDirective}}</span></td>
-              <td style="font-size: 11px; color: #64748b;">{{.CreatedAt}}</td>
-              <td>
-                <button onclick="quickAllow('{{.Host}}', '{{.BlockedURI}}')" class="btn-success btn-small">
-                  Permitir
-                </button>
-              </td>
-            </tr>
-            {{else}}
-            <tr>
-              <td colspan="5" style="text-align: center; color: #64748b; padding: 24px;">No hay reportes recientes.</td>
-            </tr>
-            {{end}}
-          </tbody>
-        </table>
       </div>
     </div>
 
@@ -558,36 +514,91 @@
       </div>
     </div>
 
-    <div id="csp-modal" class="modal-overlay">
-      <div class="modal-content">
+    <div id="service-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width: 900px; width: 95%;">
         <div class="modal-header">
-          <h3 id="modal-host">Gestionar Reglas CSP</h3>
-          <button class="btn-logout" onclick="closeCspManager()" style="height: 32px; width: 32px; padding: 0">X</button>
+          <h3 id="modal-host">Gestión del Servicio</h3>
+          <button class="btn-logout" onclick="closeServiceModal()" style="height: 32px; width: 32px; padding: 0">X</button>
         </div>
-        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 20px">
-          Añade o quita dominios permitidos para este puente. reGIO bloqueará cualquier otro recurso no listado aquí.
-        </p>
 
-        <div class="input-group">
-          <label>Añadir Nuevo Dominio/Recurso</label>
-          <div style="display: flex; gap: 8px">
-            <input type="text" id="new-csp-item" placeholder="ej: https://cdn.example.com" style="flex: 1" />
-            <button class="btn-success" onclick="addCspItem()" style="height: 44px">Permitir</button>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+          <!-- Columna Izquierda: Configuración CSP y Bypass Keys -->
+          <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 20px;">
+            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+              <h4 style="margin-top: 0; color: #818cf8; margin-bottom: 12px;">Seguridad (CSP)</h4>
+              <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
+                Permite o bloquea recursos externos cargados por este servicio.
+              </p>
+
+              <div class="input-group">
+                <label>Añadir Nuevo Dominio/Recurso</label>
+                <div style="display: flex; gap: 8px">
+                  <input type="text" id="new-csp-item" placeholder="ej: https://cdn.example.com" style="flex: 1" />
+                  <button class="btn-success" onclick="addCspItem()" style="height: 44px">Permitir</button>
+                </div>
+              </div>
+
+              <div style="margin-top: 24px; margin-bottom: 24px;">
+                <label style="font-size: 12px; color: #64748b; text-transform: uppercase">Recursos Permitidos Actualmente</label>
+                <div id="csp-tags" class="csp-tag-list">
+                  <!-- Tags will be injected here -->
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 16px;">
+                <button class="btn-primary" onclick="saveCspChanges()" style="height: 44px; padding: 0 24px">Guardar Reglas CSP</button>
+              </div>
+
+              <h5 style="margin-bottom: 8px; font-size: 13px;">Alertas CSP Recientes</h5>
+              <div style="max-height: 200px; overflow-y: auto; background: rgba(15,23,42,0.5); border-radius: 6px;">
+                <table style="font-size: 12px;" id="modal-csp-table">
+                  <thead>
+                    <tr>
+                      <th>Recurso Bloqueado</th>
+                      <th>Directiva</th>
+                    </tr>
+                  </thead>
+                  <tbody id="modal-csp-body">
+                    <tr><td colspan="2" style="text-align: center; color: #71717a">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+              <h4 style="margin-top: 0; color: #fbbf24; margin-bottom: 12px;">Tokens de Bypass Activos</h4>
+              <ul id="modal-bypass-list" style="list-style: none; padding: 0; margin: 0; font-size: 13px;">
+                <li style="color: #71717a">Cargando...</li>
+              </ul>
+            </div>
           </div>
-        </div>
 
-        <div style="margin-top: 24px">
-          <label style="font-size: 12px; color: #64748b; text-transform: uppercase">Recursos Permitidos Actualmente</label>
-          <div id="csp-tags" class="csp-tag-list">
-            <!-- Tags will be injected here -->
+          <!-- Columna Derecha: Logs -->
+          <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column;">
+            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; flex-grow: 1; display: flex; flex-direction: column;">
+              <h4 style="margin-top: 0; color: #4ade80; margin-bottom: 12px;">Registro de Eventos</h4>
+              <div
+                id="modal-events-log"
+                style="
+                  flex-grow: 1;
+                  min-height: 200px;
+                  max-height: 550px;
+                  overflow-y: auto;
+                  background: rgba(15,23,42,0.5);
+                  border-radius: 6px;
+                  padding: 12px;
+                  font-family: ui-monospace, monospace;
+                  font-size: 12px;
+                "
+              >
+                <div style="color: #71717a">Cargando eventos...</div>
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px">
-          <button class="btn-primary" onclick="saveCspChanges()" style="height: 44px; padding: 0 24px">Guardar Cambios</button>
         </div>
       </div>
     </div>
+
 
     <datalist id="domain-suggestions">
       {{range .HostSuggestions}}
@@ -601,14 +612,21 @@
     <script>
       var currentCspHost = "";
       var currentCspItems = [];
+      var currentServiceTarget = "";
 
-      function openCspManager(host) {
+      function openServiceModal(host, target) {
         currentCspHost = host;
-        document.getElementById("modal-host").innerText = "CSP: " + host;
+        currentServiceTarget = target;
+        document.getElementById("modal-host").innerText = "Servicio: " + host;
+
+        // Setup CSP form hidden inputs
         var hiddenInput = document.getElementById("csp-hidden-" + host);
         var rawCsp = (hiddenInput ? hiddenInput.value : "") || "default-src 'self'";
+        document.getElementById("csp-old-host").value = host;
+        document.getElementById("csp-new-host").value = host;
+        document.getElementById("csp-target").value = target;
 
-        // Parsear CSP simplificada
+        // Parsear CSP simplificada para los tags
         var items = [];
         var parts = rawCsp.split(";");
         for (var i = 0; i < parts.length; i++) {
@@ -625,11 +643,72 @@
         }
         currentCspItems = items;
         renderCspTags();
-        document.getElementById("csp-modal").style.display = "flex";
+
+        // Mostrar Modal de Inmediato
+        document.getElementById("service-modal").style.display = "flex";
+
+        // Limpiar Contenido Previo
+        document.getElementById("modal-events-log").innerHTML = '<div style="color: #71717a">Cargando eventos...</div>';
+        document.getElementById("modal-csp-body").innerHTML = '<tr><td colspan="2" style="text-align: center; color: #71717a">Cargando...</td></tr>';
+        document.getElementById("modal-bypass-list").innerHTML = '<li style="color: #71717a">Cargando...</li>';
+
+        // Hacer petición API
+        fetch('/admin?action=get_service_details&host=' + encodeURIComponent(host))
+          .then(r => r.json())
+          .then(data => {
+            // Llenar Eventos
+            var evContainer = document.getElementById("modal-events-log");
+            if (!data.events || data.events.length === 0) {
+              evContainer.innerHTML = '<div style="color: #71717a">No hay eventos recientes para este servicio.</div>';
+            } else {
+              evContainer.innerHTML = '';
+              data.events.forEach(function(e) {
+                var d = document.createElement("div");
+                d.className = "event-log-entry";
+                d.style.marginBottom = "6px";
+                d.style.lineHeight = "1.4";
+                d.innerHTML = '<span style="color: #71717a">' + e.Timestamp + '</span> <span style="color: #818cf8; font-weight: bold">[' + e.Performer + ']</span> ' + e.Message;
+                evContainer.appendChild(d);
+              });
+            }
+
+            // Llenar Alertas CSP
+            var cspBody = document.getElementById("modal-csp-body");
+            if (!data.csp_reports || data.csp_reports.length === 0) {
+              cspBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #71717a">No hay alertas.</td></tr>';
+            } else {
+              cspBody.innerHTML = '';
+              data.csp_reports.forEach(function(r) {
+                var tr = document.createElement("tr");
+                tr.innerHTML = '<td style="word-break: break-all; max-width: 150px;" title="' + r.BlockedURI + '">' + r.BlockedURI + '</td><td>' + r.ViolatedDirective + '</td>';
+                cspBody.appendChild(tr);
+              });
+            }
+
+            // Llenar Bypass Keys
+            var bpList = document.getElementById("modal-bypass-list");
+            if (!data.bypass_keys || data.bypass_keys.length === 0) {
+              bpList.innerHTML = '<li style="color: #71717a">No hay tokens activos.</li>';
+            } else {
+              bpList.innerHTML = '';
+              data.bypass_keys.forEach(function(k) {
+                var li = document.createElement("li");
+                li.style.marginBottom = "8px";
+                li.style.paddingBottom = "8px";
+                li.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                li.innerHTML = '<div style="font-weight: bold; color: #e2e8f0;">' + k.Name + '</div><div style="font-family: monospace; font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 8px;">Token: ' + k.Token + ' <button onclick="copyToClipboard(\'' + k.Token + '\', this)" style="background: none; border: none; color: #4ade80; cursor: pointer; padding: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>';
+                bpList.appendChild(li);
+              });
+            }
+          })
+          .catch(e => {
+            console.error(e);
+            document.getElementById("modal-events-log").innerHTML = '<div style="color: #ef4444">Error cargando detalles.</div>';
+          });
       }
 
-      function closeCspManager() {
-        document.getElementById("csp-modal").style.display = "none";
+      function closeServiceModal() {
+        document.getElementById("service-modal").style.display = "none";
       }
 
       function renderCspTags() {

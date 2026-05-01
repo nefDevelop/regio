@@ -312,6 +312,58 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == "GET" && r.URL.Query().Get("action") == "get_service_details" {
+		host := r.URL.Query().Get("host")
+		if host == "" {
+			http.Error(w, "Host requerido", http.StatusBadRequest)
+			return
+		}
+
+		type ServiceDetails struct {
+			Events     []models.Event      `json:"events"`
+			CSPReports []models.CSPReport  `json:"csp_reports"`
+			BypassKeys []models.BypassKey  `json:"bypass_keys"`
+		}
+		var details ServiceDetails
+		details.Events = []models.Event{}
+		details.CSPReports = []models.CSPReport{}
+		details.BypassKeys = []models.BypassKey{}
+
+		// Get CSP reports for this host
+		rowsCSP, errCSP := db.DB.Query("SELECT id, host, blocked_uri, violated_directive, original_policy, datetime(created_at, 'localtime') FROM csp_reports WHERE host = ? ORDER BY id DESC LIMIT 50", host)
+		if errCSP == nil {
+			defer rowsCSP.Close()
+			for rowsCSP.Next() {
+				var report models.CSPReport
+				rowsCSP.Scan(&report.ID, &report.Host, &report.BlockedURI, &report.ViolatedDirective, &report.OriginalPolicy, &report.CreatedAt)
+				details.CSPReports = append(details.CSPReports, report)
+			}
+		}
+
+		// Get events containing the host name
+		rowsEvents, errEv := db.DB.Query("SELECT datetime(timestamp, 'localtime'), message, performer FROM events WHERE message LIKE ? ORDER BY id DESC LIMIT 50", "%"+host+"%")
+		if errEv == nil {
+			defer rowsEvents.Close()
+			for rowsEvents.Next() {
+				var e models.Event
+				rowsEvents.Scan(&e.Timestamp, &e.Message, &e.Performer)
+				details.Events = append(details.Events, e)
+			}
+		}
+
+		// Get bypass keys for this host
+		allKeys := security.GetBypassKeys()
+		for _, k := range allKeys {
+			if k.Host == host {
+				details.BypassKeys = append(details.BypassKeys, k)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(details)
+		return
+	}
+
 	if r.Method == "POST" {
 		if r.FormValue("csrf_token") != user.CSRFToken {
 			http.Error(w, "Error de validación CSRF", http.StatusForbidden)
