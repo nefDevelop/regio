@@ -317,13 +317,13 @@
             <input type="text" name="target" list="target-suggestions" placeholder="http://10.0.0.5:80" required />
           </div>
 
-          <div class="input-group">
-            <label>&nbsp;</label>
+          <div class="input-group" style="height: 100%; display: flex; flex-direction: column; justify-content: flex-end;">
             <label
               class="public-check"
               data-tooltip="Si se activa, cualquier persona podrá acceder a este servicio sin necesidad de iniciar sesión."
             >
-              <input type="checkbox" name="public" class="custom-checkbox" /> Público
+              <input type="checkbox" name="public" class="custom-checkbox" />
+              <span style="display: inline-flex; align-items: center; line-height: 1;">Público</span>
             </label>
           </div>
 
