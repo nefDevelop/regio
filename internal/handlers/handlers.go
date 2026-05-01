@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
@@ -11,11 +10,13 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -24,7 +25,13 @@ import (
 	"regio/internal/auth"
 	"regio/internal/db"
 	"regio/internal/models"
+	"regio/internal/security"
 )
+
+// UpdateAllowedNetworksFromConfig refresca la lista blanca de redes permitidas basándose en los servicios configurados.
+func UpdateAllowedNetworksFromConfig() {
+	security.RefreshAllowedNetworks(Config.Servicios)
+}
 
 //go:embed templates/*.html
 var templateFiles embed.FS
@@ -34,9 +41,6 @@ var staticFiles embed.FS
 
 var (
 	ActiveSessions  = make(map[string]*models.User)
-	IntentosDB      = make(map[string]*models.Intento)
-	IntentosUsuario = make(map[string]*models.Intento)
-	BypassKeys      = make(map[string]models.BypassKey)
 	Mu              sync.Mutex
 	Config          models.Config
 	NeedsSetup      bool
@@ -44,11 +48,10 @@ var (
 	SessionKey      = "REGIO_session"
 	Tmpls           *template.Template
 	TrustedProxies  []string
-	AllowLoopback   bool // Solo para pruebas
 	// Transport personalizado para el proxy con validación DNS anti-rebinding (MED-04)
 	proxyTransport = &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: safeDialContext,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           security.SafeDialContext,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
@@ -57,50 +60,8 @@ var (
 	}
 )
 
-const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; report-uri /api/csp-report"
+const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; report-uri /api/csp-report"
 
-// safeDialContext... (mantener igual)
-
-// safeDialContext resuelve DNS y valida que la IP no sea privada antes de conectar.
-// Previene ataques SSRF por DNS rebinding (TOCTOU).
-func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, fmt.Errorf("dirección inválida: %s", addr)
-	}
-
-	// Si ya es una IP, validarla directamente
-	if ip := net.ParseIP(host); ip != nil {
-		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
-			db.LogEvent(fmt.Sprintf("⚠ Bloqueo de conexión directa a IP restringida: %s", ip), "Sistema")
-			return nil, fmt.Errorf("proxy bloqueado: IP restringida %s", ip)
-		}
-		dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
-		return dialer.DialContext(ctx, network, addr)
-	}
-
-	// Resolver DNS y validar todas las IPs resultantes
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return nil, fmt.Errorf("resolución DNS fallida para %s: %v", host, err)
-	}
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("sin resultados DNS para %s", host)
-	}
-
-	for _, ip := range ips {
-		if !AllowLoopback && (ip.IP.IsLoopback() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() || ip.IP.IsUnspecified()) {
-			db.LogEvent(fmt.Sprintf("⚠ SSRF bloqueado: %s resuelve a IP restringida %s", host, ip.IP), "Sistema")
-			return nil, fmt.Errorf("proxy bloqueado: %s resuelve a IP restringida %s", host, ip.IP)
-		}
-	}
-
-	// Conectar usando la primera IP validada (evita re-resolución)
-	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
-	return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
-}
-
-// sessionHash genera un hash SHA-256 del token de sesión para almacenamiento seguro.
 func sessionHash(rawToken string) string {
 	h := sha256.Sum256([]byte(rawToken))
 	return base64.RawURLEncoding.EncodeToString(h[:])
@@ -108,6 +69,20 @@ func sessionHash(rawToken string) string {
 
 func Init() {
 	Tmpls = template.Must(template.ParseFS(templateFiles, "templates/*.html"))
+
+	// Registrar tipos MIME comunes (blindaje si falta mailcap/mime.types en el sistema)
+	mime.AddExtensionType(".js", "application/javascript")
+	mime.AddExtensionType(".css", "text/css")
+	mime.AddExtensionType(".svg", "image/svg+xml")
+	mime.AddExtensionType(".png", "image/png")
+	mime.AddExtensionType(".jpg", "image/jpeg")
+	mime.AddExtensionType(".jpeg", "image/jpeg")
+	mime.AddExtensionType(".gif", "image/gif")
+	mime.AddExtensionType(".ico", "image/x-icon")
+	mime.AddExtensionType(".html", "text/html")
+	mime.AddExtensionType(".json", "application/json")
+	mime.AddExtensionType(".woff", "font/woff")
+	mime.AddExtensionType(".woff2", "font/woff2")
 
 	// Cargar proxies de confianza desde el entorno
 	proxies := os.Getenv("TRUSTED_PROXIES")
@@ -118,26 +93,9 @@ func Init() {
 		}
 	}
 
-	loadBypassKeys()
-	InitSecurity()
+	security.LoadBypassKeys()
+	security.InitIPFilter()
 	LoadSessions()
-}
-
-func loadBypassKeys() {
-	rows, err := db.DB.Query("SELECT token, name, host FROM bypass_keys")
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	Mu.Lock()
-	defer Mu.Unlock()
-	for rows.Next() {
-		var k models.BypassKey
-		if err := rows.Scan(&k.Token, &k.Name, &k.Host); err == nil {
-			BypassKeys[k.Token] = k
-		}
-	}
 }
 
 func isTrustedProxy(ip string) bool {
@@ -208,8 +166,9 @@ func LoadSessions() {
 
 func ServeStatic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-	if strings.HasSuffix(r.URL.Path, ".css") {
-		w.Header().Set("Content-Type", "text/css")
+	ext := filepath.Ext(r.URL.Path)
+	if ct := mime.TypeByExtension(ext); ct != "" {
+		w.Header().Set("Content-Type", ct)
 	}
 	http.FileServer(http.FS(staticFiles)).ServeHTTP(w, r)
 }
@@ -217,11 +176,11 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 	if r.Method == "POST" {
 		inputUser := r.FormValue("user")
-		LogEvent(fmt.Sprintf("🔍 Intento de login para usuario: %s desde %s", inputUser, ip), "Sistema")
+		LogEvent(fmt.Sprintf("%s Intento de login para usuario: %s desde %s", db.PrefixSCAN, inputUser, ip), "Sistema")
 
 		// Verificar si la cuenta está bloqueada por fuerza bruta distribuida
-		if IsUserBlocked(inputUser) {
-			db.LogEvent(fmt.Sprintf("⊜ Intento de login en cuenta bloqueada: %s desde %s", inputUser, ip), "Sistema")
+		if security.IsUserBlocked(inputUser) {
+			db.LogEvent(fmt.Sprintf("%s Intento de login en cuenta bloqueada: %s desde %s", db.PrefixBLOCK, inputUser, ip), "Sistema")
 			http.Redirect(w, r, "/REGIO-login?error=locked", http.StatusSeeOther)
 			return
 		}
@@ -231,14 +190,14 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 		var isAdmin, totpActive bool
 		err := db.DB.QueryRow("SELECT id, COALESCE(password_hash, ''), COALESCE(totp_secret, ''), COALESCE(invite_token, ''), is_admin, totp_active FROM users WHERE username = ?", inputUser).Scan(&id, &hash, &totpEnc, &inviteStored, &isAdmin, &totpActive)
 		if err != nil {
-			LogEvent(fmt.Sprintf("❌ Error buscando usuario %s en DB: %v", inputUser, err), "Sistema")
+			LogEvent(fmt.Sprintf("%s Error buscando usuario %s en DB: %v", db.PrefixERR, inputUser, err), "Sistema")
 		}
 
 		if err == nil && hash == "" {
 			// El usuario no tiene contraseña, verificamos el token de invitación
 			inviteGiven := r.URL.Query().Get("invite")
 			if inviteGiven == "" || subtle.ConstantTimeCompare([]byte(inviteGiven), []byte(inviteStored)) != 1 {
-				db.LogEvent(fmt.Sprintf("⚠ Intento de acceso a usuario sin contraseña sin token válido: %s", inputUser), ip)
+				db.LogEvent(fmt.Sprintf("%s Intento de acceso a usuario sin contraseña sin token válido: %s", db.PrefixWARN, inputUser), ip)
 				http.Redirect(w, r, "/REGIO-login?error=invalid_invite", http.StatusSeeOther)
 				return
 			}
@@ -271,11 +230,11 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 						LastActive: time.Now(),
 						RemoteIP:   ip,
 					}
-					delete(IntentosDB, ip)
 					Mu.Unlock()
+					security.UnbanIP(ip)
 
 					db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", tokenHash, id, csrf, ip, r.UserAgent(), time.Now())
-					db.LogEvent(fmt.Sprintf("⚿ Contraseña inicial creada y sesión iniciada: %s", inputUser), inputUser)
+					db.LogEvent(fmt.Sprintf("%s Contraseña inicial creada y sesión iniciada: %s", db.PrefixPASS, inputUser), inputUser)
 					http.Redirect(w, r, "/", http.StatusSeeOther)
 					return
 				}
@@ -291,7 +250,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 		loginValido := false
 		if err == nil && auth.VerifyPassword(inputPass, hash) {
-			LogEvent(fmt.Sprintf("✅ Contraseña correcta para %s", inputUser), "Sistema")
+			LogEvent(fmt.Sprintf("%s Contraseña correcta para %s", inputUser), "Sistema")
 			if !totpActive {
 				loginValido = true
 			} else {
@@ -300,15 +259,15 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 				if decErr == nil && input2fa == auth.GetTOTPCode(totpSecret) {
 					loginValido = true
 				} else {
-					LogEvent(fmt.Sprintf("❌ Fallo TOTP para %s", inputUser), "Sistema")
+					LogEvent(fmt.Sprintf("%s Fallo TOTP para %s", inputUser), "Sistema")
 				}
 			}
 		} else {
-			LogEvent(fmt.Sprintf("❌ Contraseña incorrecta para %s", inputUser), "Sistema")
+			LogEvent(fmt.Sprintf("%s Contraseña incorrecta para %s", inputUser), "Sistema")
 		}
 
 		if loginValido {
-			ResetearIntentosUsuario(inputUser)
+			security.ResetearIntentosUsuario(inputUser)
 			rawToken := auth.GenerateSessionToken()
 			setSessionCookie(w, r, rawToken)
 			tokenHash := sessionHash(rawToken)
@@ -324,17 +283,18 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 				LastActive: time.Now(),
 				RemoteIP:   ip,
 			}
-			delete(IntentosDB, ip)
 			Mu.Unlock()
+			security.ResetearIntentosUsuario(inputUser)
+			security.UnbanIP(ip)
 
 			db.DB.Exec("INSERT INTO sessions (token, user_id, csrf_token, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?)", tokenHash, id, csrf, ip, r.UserAgent(), time.Now())
-			db.LogEvent(fmt.Sprintf("✓ Inicio de sesión exitoso: %s (%s)", inputUser, ip), inputUser)
+			db.LogEvent(fmt.Sprintf("%s Inicio de sesión exitoso: %s (%s)", db.PrefixOK, inputUser, ip), inputUser)
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
 
-		RegistrarFallo(ip)
-		RegistrarFalloUsuario(inputUser)
+		security.RegistrarFallo(ip)
+		security.RegistrarFalloUsuario(inputUser)
 		http.Redirect(w, r, "/REGIO-login?error=1", http.StatusSeeOther)
 		return
 	}
@@ -364,8 +324,8 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			target := r.FormValue("target")
 			csp := r.FormValue("csp")
 			if host != "" && target != "" {
-				if err := isValidTarget(target); err != nil {
-					db.LogEvent(fmt.Sprintf("⚠ Intento de añadir target inválido/SSRF: %s -> %s (%v)", host, target, err), user.Username)
+				if err := security.IsValidTarget(target); err != nil {
+					db.LogEvent(fmt.Sprintf("%s Intento de añadir target inválido/SSRF: %s -> %s (%v)", db.PrefixWARN, host, target, err), user.Username)
 					http.Error(w, "Target inválido: "+err.Error(), http.StatusBadRequest)
 					return
 				}
@@ -386,19 +346,19 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Config.Servicios[host] = target
 				Config.Publicos[host] = r.FormValue("public") == "on"
 				Config.CSPs[host] = csp
-				
+
 				// Gestión de Bypass Key integrada
 				bypassName := r.FormValue("bypass_name")
 				bypassToken := r.FormValue("bypass_token")
 				if bypassName != "" && bypassToken != "" {
-					db.DB.Exec("INSERT OR REPLACE INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", bypassToken, bypassName, host)
-					db.LogEvent(fmt.Sprintf("🔑 Bypass key creada automáticamente para: %s (%s)", host, bypassName), user.Username)
+					security.AddBypassKey(bypassToken, bypassName, host)
+					db.LogEvent(fmt.Sprintf("%s Bypass key creada automáticamente para: %s (%s)", db.PrefixKEY, host, bypassName), user.Username)
 				}
 
 				db.SaveConfig(Config)
-				loadBypassKeys() // Recargar llaves en memoria
+				UpdateAllowedNetworksFromConfig()
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⎈ Puente añadido: %s -> %s (Público: %v)", host, target, Config.Publicos[host]), user.Username)
+				db.LogEvent(fmt.Sprintf("%s Puente añadido: %s -> %s (Público: %v)", db.PrefixREGIO, host, target, Config.Publicos[host]), user.Username)
 			}
 		case "update_service":
 			host := r.FormValue("old_host")
@@ -406,8 +366,8 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			target := r.FormValue("target")
 			csp := r.FormValue("csp")
 			if host != "" && newHost != "" && target != "" {
-				if err := isValidTarget(target); err != nil {
-					db.LogEvent(fmt.Sprintf("⚠ Intento de actualizar target inválido/SSRF: %s -> %s (%v)", newHost, target, err), user.Username)
+				if err := security.IsValidTarget(target); err != nil {
+					db.LogEvent(fmt.Sprintf("%s Intento de actualizar target inválido/SSRF: %s -> %s (%v)", db.PrefixWARN, newHost, target, err), user.Username)
 					http.Error(w, "Target inválido: "+err.Error(), http.StatusBadRequest)
 					return
 				}
@@ -424,7 +384,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				isPublic := Config.Publicos[host]
 				delete(Config.Publicos, host)
 				Config.Publicos[newHost] = isPublic
-				
+
 				bypass := Config.BypassHeaders[host]
 				delete(Config.BypassHeaders, host)
 				Config.BypassHeaders[newHost] = bypass
@@ -433,8 +393,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				Config.CSPs[newHost] = csp
 
 				db.SaveConfig(Config)
+				UpdateAllowedNetworksFromConfig()
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("⎈ Puente actualizado: %s -> %s", newHost, target), user.Username)
+				db.LogEvent(fmt.Sprintf("%s Puente actualizado: %s -> %s", db.PrefixREGIO, newHost, target), user.Username)
 			}
 		case "delete_service":
 			host := r.FormValue("host")
@@ -444,8 +405,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			delete(Config.BypassHeaders, host)
 			delete(Config.CSPs, host)
 			db.SaveConfig(Config)
+			UpdateAllowedNetworksFromConfig()
 			Mu.Unlock()
-			db.LogEvent(fmt.Sprintf("⎈ Puente eliminado: %s", host), user.Username)
+			db.LogEvent(fmt.Sprintf("%s Puente eliminado: %s", db.PrefixREGIO, host), user.Username)
 		case "add_bypass_key":
 			token := r.FormValue("token")
 			name := r.FormValue("name")
@@ -454,14 +416,12 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Todos los campos son obligatorios para crear una Bypass Key", http.StatusBadRequest)
 				return
 			}
-			db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
-			loadBypassKeys()
-			db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), user.Username)
+			security.AddBypassKey(token, name, host)
+			db.LogEvent(fmt.Sprintf("%s Bypass key creada: %s para host %s", db.PrefixKEY, name, host), user.Username)
 		case "delete_bypass_key":
 			token := r.FormValue("token")
-			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
-			loadBypassKeys()
-			db.LogEvent(fmt.Sprintf("🔑 Bypass key eliminada: %s", token), user.Username)
+			security.DeleteBypassKey(token)
+			db.LogEvent(fmt.Sprintf("%s Bypass key eliminada: %s", db.PrefixKEY, token), user.Username)
 		case "add_user":
 			newUser := r.FormValue("new_user")
 			if newUser != "" {
@@ -471,37 +431,35 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, invite_token, is_admin, totp_active) VALUES (?, '', ?, ?, 0, 0)", newUser, totpEnc, inviteToken)
 
 				inviteURL := fmt.Sprintf("https://%s/REGIO-login?invite=%s", AdminDomain, inviteToken)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario creado: %s. URL de invitación: %s", newUser, inviteURL), user.Username)
-			}
-		case "delete_user":
-			delUser := r.FormValue("del_user")
-			var idToDelete int
-			db.DB.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
-			if idToDelete != 1 {
+				db.LogEvent(fmt.Sprintf("%s Usuario creado: %s. URL de invitación: %s", db.PrefixUSER, newUser, inviteURL), user.Username)
+				}
+				case "delete_user":
+				delUser := r.FormValue("del_user")
+				var idToDelete int
+				db.DB.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
+				if idToDelete != 1 {
 				db.DB.Exec("DELETE FROM users WHERE username = ?", delUser)
-				db.LogEvent(fmt.Sprintf("⚇ Usuario eliminado: %s", delUser), user.Username)
-			}
-		case "ban_ip":
-			targetIP := r.FormValue("target_ip")
-			if targetIP != "" {
-				hasta := time.Now().Add(365 * 24 * time.Hour)
-				Mu.Lock()
-				IntentosDB[targetIP] = &models.Intento{Fallos: 99, BloqueadoHasta: hasta}
-				Mu.Unlock()
-				db.DB.Exec("INSERT OR REPLACE INTO banned_ips (ip, hasta, razon) VALUES (?, ?, ?)", targetIP, hasta, "Bloqueo manual del administrador")
-				db.LogEvent(fmt.Sprintf("⊘ IP/Rango bloqueado manualmente: %s", targetIP), user.Username)
-			}
-		case "unban_ip":
-			targetIP := r.FormValue("target_ip")
-			UnbanIP(targetIP)
-			db.LogEvent(fmt.Sprintf("✓ IP/Rango desbloqueado: %s", targetIP), user.Username)
+				db.LogEvent(fmt.Sprintf("%s Usuario eliminado: %s", db.PrefixUSER, delUser), user.Username)
+				}
+				case "ban_ip":
+				targetIP := r.FormValue("target_ip")
+				if targetIP != "" {
+				security.BanIP(targetIP, "Bloqueo manual del administrador", 365*24*time.Hour)
+				db.LogEvent(fmt.Sprintf("%s IP/Rango bloqueado manualmente: %s", db.PrefixBLOCK, targetIP), user.Username)
+				}
+				case "unban_ip":
+				targetIP := r.FormValue("target_ip")
+				security.UnbanIP(targetIP)
+				db.LogEvent(fmt.Sprintf("%s IP/Rango desbloqueado: %s", db.PrefixOK, targetIP), user.Username)
+
 		case "revoke_session":
 			tokenToRevoke := r.FormValue("token")
 			Mu.Lock()
 			delete(ActiveSessions, tokenToRevoke)
 			Mu.Unlock()
 			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
-			db.LogEvent(fmt.Sprintf("⊘ Sesión revocada por el administrador: %s", user.Username), user.Username)
+			db.LogEvent(fmt.Sprintf("%s Sesión revocada por el administrador: %s", db.PrefixBLOCK, user.Username), user.Username)
+
 		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
@@ -516,23 +474,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		users = append(users, u)
 	}
 
-	var bypassList []models.BypassKey
-	rowsB, _ := db.DB.Query("SELECT token, name, host FROM bypass_keys")
-	defer rowsB.Close()
-	for rowsB.Next() {
-		var k models.BypassKey
-		rowsB.Scan(&k.Token, &k.Name, &k.Host)
-		bypassList = append(bypassList, k)
-	}
+	bypassList := security.GetBypassKeys()
 
-	var bannedList []models.BannedIP
-	Mu.Lock()
-	for k, v := range IntentosDB {
-		if time.Now().Before(v.BloqueadoHasta) {
-			bannedList = append(bannedList, models.BannedIP{Target: k, Hasta: v.BloqueadoHasta.Format("02/01/2006 15:04:05")})
-		}
-	}
-	Mu.Unlock()
+	bannedList := security.GetBannedIPs()
 
 	var events []models.Event
 	rowsEvents, _ := db.DB.Query("SELECT datetime(timestamp, 'localtime'), message, performer FROM events ORDER BY id DESC LIMIT 50")
@@ -708,7 +652,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 					Mu.Lock()
 					userSession.Username = newUsername
 					Mu.Unlock()
-					db.LogEvent(fmt.Sprintf("⚇ Nombre de usuario actualizado: %s", newUsername), u.Username)
+					db.LogEvent(fmt.Sprintf("%s Nombre de usuario actualizado: %s", newUsername), u.Username)
 				}
 			}
 			if newPassword != "" {
@@ -727,14 +671,14 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				}
 				Mu.Unlock()
 				db.DB.Exec("DELETE FROM sessions WHERE user_id = ? AND token != ?", u.ID, cookieHash)
-				db.LogEvent(fmt.Sprintf("⚿ Contraseña actualizada por el usuario: %s (sesiones previas invalidadas)", u.Username), u.Username)
+				db.LogEvent(fmt.Sprintf("%s Contraseña actualizada por el usuario: %s (sesiones previas invalidadas)", u.Username), u.Username)
 			}
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "enable_2fa" {
 			if r.FormValue("code") == auth.GetTOTPCode(u.TotpSecret) {
 				db.DB.Exec("UPDATE users SET totp_active = 1 WHERE id = ?", u.ID)
-				db.LogEvent(fmt.Sprintf("⚿ 2FA activado por el usuario: %s", u.Username), u.Username)
+				db.LogEvent(fmt.Sprintf("%s 2FA activado por el usuario: %s", u.Username), u.Username)
 				http.Redirect(w, r, "/profile", http.StatusSeeOther)
 				return
 			} else {
@@ -742,7 +686,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if accion == "disable_2fa" {
 			db.DB.Exec("UPDATE users SET totp_active = 0 WHERE id = ?", u.ID)
-			db.LogEvent(fmt.Sprintf("⊘ 2FA desactivado por el usuario: %s", u.Username), u.Username)
+			db.LogEvent(fmt.Sprintf("%s 2FA desactivado por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "create_token" {
@@ -757,12 +701,12 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			_, err := db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", u.ID, tokenName, tokenHash)
 			if err == nil {
 				newToken = rawToken
-				db.LogEvent(fmt.Sprintf("⚿ App Token creado: %s para el usuario: %s", tokenName, u.Username), u.Username)
+				db.LogEvent(fmt.Sprintf("%s App Token creado: %s para el usuario: %s", tokenName, u.Username), u.Username)
 			}
 		} else if accion == "revoke_token" {
 			tokenID := r.FormValue("token_id")
 			db.DB.Exec("DELETE FROM app_tokens WHERE id = ? AND user_id = ?", tokenID, u.ID)
-			db.LogEvent(fmt.Sprintf("⊘ App Token revocado por el usuario: %s", u.Username), u.Username)
+			db.LogEvent(fmt.Sprintf("%s App Token revocado por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "revoke_session" {
@@ -771,7 +715,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			delete(ActiveSessions, tokenToRevoke)
 			Mu.Unlock()
 			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
-			db.LogEvent(fmt.Sprintf("⊘ Sesión de navegador revocada por el usuario: %s", u.Username), u.Username)
+			db.LogEvent(fmt.Sprintf("%s Sesión de navegador revocada por el usuario: %s", u.Username), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "add_bypass_key" && u.IsAdmin {
@@ -782,16 +726,14 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Todos los campos son obligatorios para crear una Bypass Key", http.StatusBadRequest)
 				return
 			}
-			db.DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
-			loadBypassKeys()
-			db.LogEvent(fmt.Sprintf("🔑 Bypass key creada: %s para host %s", name, host), u.Username)
+			security.AddBypassKey(token, name, host)
+			db.LogEvent(fmt.Sprintf("%s Bypass key creada: %s para host %s", name, host), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		} else if accion == "delete_bypass_key" && u.IsAdmin {
 			token := r.FormValue("token")
-			db.DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
-			loadBypassKeys()
-			db.LogEvent(fmt.Sprintf("🔑 Bypass key eliminada: %s", token), u.Username)
+			security.DeleteBypassKey(token)
+			db.LogEvent(fmt.Sprintf("%s Bypass key eliminada: %s", token), u.Username)
 			http.Redirect(w, r, "/profile", http.StatusSeeOther)
 			return
 		}
@@ -808,13 +750,7 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 
 	var bypassKeys []models.BypassKey
 	if u.IsAdmin {
-		rowsB, _ := db.DB.Query("SELECT token, name, host, created_at FROM bypass_keys")
-		defer rowsB.Close()
-		for rowsB.Next() {
-			var k models.BypassKey
-			rowsB.Scan(&k.Token, &k.Name, &k.Host, &k.CreatedAt)
-			bypassKeys = append(bypassKeys, k)
-		}
+		bypassKeys = security.GetBypassKeys()
 	}
 
 	otpUrl := fmt.Sprintf("otpauth://totp/reGIO:%%20%s?secret=%s&issuer=reGIO", u.Username, u.TotpSecret)
@@ -892,7 +828,7 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 			}
 			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, encryptedSecret)
 			if err == nil {
-				db.LogEvent("✓ Instalación completada. Administrador original creado.", "Sistema")
+				db.LogEvent("%s Instalación completada. Administrador original creado.", "Sistema")
 				NeedsSetup = false
 			}
 			Mu.Unlock()
@@ -930,58 +866,6 @@ func RelTime(t time.Time) string {
 		return fmt.Sprintf("hace %d horas", int(diff.Hours()))
 	}
 	return t.Format("02/01/2006")
-}
-
-func isValidTarget(target string) error {
-	// Autocompletar esquema si falta
-	if !strings.Contains(target, "://") {
-		target = "http://" + target
-	}
-
-	u, err := url.Parse(target)
-	if err != nil {
-		return fmt.Errorf("URL inválida")
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("solo se permite http o https")
-	}
-	if u.Host == "" {
-		return fmt.Errorf("host no especificado")
-	}
-
-	host, _, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		host = u.Host
-	}
-
-	host = strings.TrimPrefix(host, "[")
-	host = strings.TrimSuffix(host, "]")
-
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
-			return fmt.Errorf("no se permite apuntar a la interfaz de loopback o IPs restringidas por seguridad")
-		}
-		// Permitimos redes privadas (RFC 1918) porque reGIO es para proteger servicios internos.
-	} else if !AllowLoopback && host == "localhost" {
-		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
-	}
-
-	return nil
-}
-
-func isPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-	// RFC 1918 (IPv4)
-	if ip4 := ip.To4(); ip4 != nil {
-		return ip4[0] == 10 ||
-			(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
-			(ip4[0] == 192 && ip4[1] == 168)
-	}
-	// RFC 4193 (IPv6 Unique Local Address)
-	return len(ip) == 16 && (ip[0] == 0xfc || ip[0] == 0xfd)
 }
 
 func LogEvent(message string, performer string) {
@@ -1034,8 +918,18 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	remote, _ := url.Parse(target)
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = proxyTransport
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.Header.Get("Content-Type") == "" {
+			ext := filepath.Ext(resp.Request.URL.Path)
+			if ct := mime.TypeByExtension(ext); ct != "" {
+				resp.Header.Set("Content-Type", ct)
+			}
+		}
+		return nil
+	}
 	r.URL.Host, r.URL.Scheme = remote.Host, remote.Scheme
-	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	r.Header.Set("X-Forwarded-Proto", "https")
 	r.Host = remote.Host
 	proxy.ServeHTTP(w, r)
 }
@@ -1048,20 +942,36 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("❌ Error leyendo cuerpo de reporte CSP: %v", err)
+		log.Printf("%s Error leyendo cuerpo de reporte CSP: %v", err)
 		return
 	}
 	defer r.Body.Close()
 
+	log.Printf("%s REPORTE CSP RECIBIDO (RAW): %s", string(body))
+
+	// Intentar parsear con el wrapper "csp-report"
 	var payload models.CSPReportPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		// Algunos navegadores envían el reporte sin el wrapper "csp-report" en versiones experimentales
-		// o con diferentes Content-Type. Intentamos parsear logueando el error.
-		log.Printf("⚠️ Error parseando reporte CSP: %v (Body: %s)", err, string(body))
-		return
+	var report struct {
+		DocumentURI       string `json:"document-uri"`
+		ViolatedDirective string `json:"violated-directive"`
+		OriginalPolicy    string `json:"original-policy"`
+		BlockedURI        string `json:"blocked-uri"`
 	}
 
-	report := payload.CSPReport
+	if err := json.Unmarshal(body, &payload); err == nil && (payload.CSPReport.BlockedURI != "" || payload.CSPReport.ViolatedDirective != "") {
+		report.DocumentURI = payload.CSPReport.DocumentURI
+		report.ViolatedDirective = payload.CSPReport.ViolatedDirective
+		report.OriginalPolicy = payload.CSPReport.OriginalPolicy
+		report.BlockedURI = payload.CSPReport.BlockedURI
+	} else {
+		// Intentar parsear el objeto plano (algunos navegadores)
+		if err := json.Unmarshal(body, &report); err != nil {
+			log.Printf("%s Error parseando reporte CSP: %v (Body: %s)", err, string(body))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Guardar reporte si hay URI bloqueada O si hay directiva violada (para inline/eval)
 	if report.BlockedURI != "" || report.ViolatedDirective != "" {
 		host := r.Host
@@ -1077,14 +987,16 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 		}
 
 		db.SaveCSPReport(host, blocked, report.ViolatedDirective, report.OriginalPolicy)
-		db.LogEvent(fmt.Sprintf("🛡️ Bloqueo CSP en %s: %s (Directiva: %s)", host, blocked, report.ViolatedDirective), "Sistema")
-		log.Printf("🛡️ Reporte CSP recibido para %s: %s violó %s", host, blocked, report.ViolatedDirective)
+		db.LogEvent(fmt.Sprintf("%s Bloqueo CSP en %s: %s (Directiva: %s)", host, blocked, report.ViolatedDirective), "Sistema")
+		log.Printf("%s Reporte CSP recibido para %s: %s violó %s", host, blocked, report.ViolatedDirective)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func MainHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s INCOMING: %s %s (Host: %s, Remote: %s)", db.PrefixIN, r.Method, r.URL.Path, r.Host, r.RemoteAddr)
+
 	if r.URL.Path == "/api/csp-report" {
 		HandleCSPReport(w, r)
 		return
@@ -1101,7 +1013,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if !strings.HasPrefix(r.URL.Path, "/static/") {
-			log.Printf("📤 [%d] %s %s %s (Host: %s)", sw.status, r.Method, logURI, ip, r.Host)
+			log.Printf("%s [%d] %s %s %s (Host: %s)", db.PrefixOUT, sw.status, r.Method, logURI, ip, r.Host)
 		}
 	}()
 
@@ -1136,27 +1048,29 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		sw.Header().Set("Content-Security-Policy", DefaultCSP)
 	}
 
-	if !CheckRateLimit(ip) {
-		sw.status = http.StatusTooManyRequests
-		http.Error(sw, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
+	if err := security.SecurityEngine(ip, r); err != nil {
+		if strings.Contains(err.Error(), "IP bloqueada") {
+			sw.status = http.StatusForbidden
+			http.Error(sw, err.Error(), http.StatusForbidden)
+		} else {
+			sw.status = http.StatusTooManyRequests
+			http.Error(sw, "Demasiadas peticiones. Por favor, espera un minuto.", http.StatusTooManyRequests)
+		}
 		return
 	}
+
 	if strings.HasPrefix(r.URL.Path, "/static/") {
 		ServeStatic(sw, r)
 		return
 	}
+
 	// Fallback para favicon.ico usando el logo SVG
 	if r.URL.Path == "/favicon.ico" {
 		r.URL.Path = "/static/reGIO.svg"
 		ServeStatic(sw, r)
 		return
 	}
-	blocked, _ := IsIPBlocked(ip)
-	if blocked {
-		sw.status = http.StatusForbidden
-		http.Error(sw, "IP bloqueada temporalmente por seguridad.", http.StatusForbidden)
-		return
-	}
+
 	Mu.Lock()
 	isSetup := NeedsSetup
 	Mu.Unlock()
@@ -1240,12 +1154,8 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		// 2. Comprobar Bypass por API Key (Identidad)
 		bypassToken := r.Header.Get("X-REGIO-Bypass")
 		if bypassToken != "" {
-			Mu.Lock()
-			key, exists := BypassKeys[bypassToken]
-			Mu.Unlock()
-
-			if exists && key.Host == r.Host {
-				db.LogEvent(fmt.Sprintf("🔑 Acceso Bypass: %s -> %s", key.Name, r.Host), "API-Key")
+			if ok, name := security.CheckBypass(bypassToken, r.Host); ok {
+				db.LogEvent(fmt.Sprintf("%s Acceso Bypass: %s -> %s", name, r.Host), "API-Key")
 				ProxyHandler(w, r)
 				return
 			}
@@ -1331,9 +1241,22 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	remote, _ := url.Parse(target)
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = proxyTransport // Usar nuestro transporte con timeouts
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.Header.Get("Content-Type") == "" {
+			ext := filepath.Ext(resp.Request.URL.Path)
+			if ct := mime.TypeByExtension(ext); ct != "" {
+				resp.Header.Set("Content-Type", ct)
+			}
+		}
+		return nil
+	}
+	// r.URL.Host y Scheme son necesarios para que el proxy sepa a dónde ir
 	r.URL.Host, r.URL.Scheme = remote.Host, remote.Scheme
-	r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
-	r.Host = remote.Host
+
+	// X-Forwarded headers para el backend
+	r.Header.Set("X-Forwarded-Host", r.Host)
+	r.Header.Set("X-Forwarded-Proto", "https")
+	r.Host = remote.Host // Restaurar comportamiento original (ayer)
 
 	if tokenUsed != "" {
 		r.Header.Del("Authorization")

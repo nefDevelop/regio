@@ -1,9 +1,8 @@
-package handlers
+package security
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"regio/internal/db"
 	"regio/internal/models"
 	"testing"
 )
@@ -28,10 +27,11 @@ func TestGetSubnet(t *testing.T) {
 }
 
 func TestFail2BanIndividual(t *testing.T) {
+	db.InitDB()
 	// Limpiar estado
-	Mu.Lock()
+	ipMu.Lock()
 	IntentosDB = make(map[string]*models.Intento)
-	Mu.Unlock()
+	ipMu.Unlock()
 
 	ip := "1.2.3.4"
 
@@ -53,10 +53,11 @@ func TestFail2BanIndividual(t *testing.T) {
 }
 
 func TestFail2BanSubnet(t *testing.T) {
+	db.InitDB()
 	// Limpiar estado
-	Mu.Lock()
+	ipMu.Lock()
 	IntentosDB = make(map[string]*models.Intento)
-	Mu.Unlock()
+	ipMu.Unlock()
 
 	subnetBase := "10.10.10.%d"
 
@@ -82,24 +83,5 @@ func TestFail2BanSubnet(t *testing.T) {
 	}
 	if motivo != "Rango de red bloqueado" {
 		t.Errorf("Motivo incorrecto: %s", motivo)
-	}
-}
-
-func TestAuthExemption(t *testing.T) {
-	// Prueba de que el sistema de login redirige correctamente
-	req, _ := http.NewRequest("GET", "/", nil)
-	rr := httptest.NewRecorder()
-
-	// Simulamos un request sin sesión
-	// Esto es un ejemplo de cómo testear los Handlers directamente
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simular lógica de redirección si no hay sesión
-		http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
-	})
-
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusSeeOther {
-		t.Errorf("Handler devolvió status %v; want %v", status, http.StatusSeeOther)
 	}
 }

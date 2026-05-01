@@ -92,27 +92,35 @@ table input.edit-mode {
 button, .btn, .btn-primary, .btn-success, .btn-danger, .btn-del, .btn-edit, .btn-logout {
   outline: none; border: none; cursor: pointer; font-weight: 600;
   transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center;
-  height: 44px; padding: 0 24px; border-radius: 12px; font-size: 14px;
+  height: 42px; padding: 0 20px; border-radius: 10px; font-size: 13px;
   white-space: nowrap; flex-shrink: 0; gap: 8px;
 }
 
-.btn-primary { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; }
-.btn-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
-.btn-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
+.btn-primary { background: #6366f1; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+.btn-success { background: #10b981; color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+.btn-danger { background: #ef4444; color: white; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
 
 .btn-del {
   background: rgba(239, 68, 68, 0.1); color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.2); height: 36px; padding: 0 16px;
+  border: 1px solid rgba(239, 68, 68, 0.2); height: 32px; padding: 0 12px; font-size: 11px;
 }
 
 .btn-edit {
   background: rgba(99, 102, 241, 0.1); color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.2); height: 36px; padding: 0 16px;
+  border: 1px solid rgba(99, 102, 241, 0.2); height: 32px; padding: 0 12px; font-size: 11px;
 }
 
-.btn-logout { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); }
+.btn-logout { 
+  background: rgba(255, 255, 255, 0.05); 
+  border: 1px solid rgba(255, 255, 255, 0.1); 
+  color: var(--text);
+  height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+}
 
-button:hover { transform: translateY(-2px); filter: brightness(1.1); }
+button:hover { transform: translateY(-1px); filter: brightness(1.2); }
+button:active { transform: translateY(0); }
 
 /* TABLES */
 table {
@@ -130,3 +138,17 @@ tr:last-child td { border-bottom: none; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
 .status-dot.offline { background: var(--danger); }
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.btn-small {
+  height: 28px !important;
+  padding: 0 10px !important;
+  font-size: 10px !important;
+  border-radius: 6px !important;
+}

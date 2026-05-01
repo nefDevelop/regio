@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"regio/internal/models"
+	"regio/internal/security"
 )
 
 // TestCSRFValidation verifica que las acciones POST requieren token CSRF válido.
@@ -108,7 +109,7 @@ func TestSSRFProtection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.scenario, func(t *testing.T) {
-			err := isValidTarget(tt.target)
+			err := security.IsValidTarget(tt.target)
 			if tt.blocked && err == nil {
 				t.Errorf("isValidTarget(%s) debería estar BLOQUEADO pero fue permitido", tt.target)
 			}
@@ -139,7 +140,7 @@ func TestIsPrivateIPv6(t *testing.T) {
 			if ip == nil {
 				t.Fatalf("No se pudo parsear IP: %s", tt.ip)
 			}
-			result := isPrivateIP(ip)
+			result := security.IsPrivateIP(ip)
 			if result != tt.expected {
 				t.Errorf("isPrivateIP(%s) = %v, want %v", tt.ip, result, tt.expected)
 			}
@@ -149,30 +150,25 @@ func TestIsPrivateIPv6(t *testing.T) {
 
 // TestRateLimitPerUser verifica el bloqueo de cuentas por fuerza bruta distribuida.
 func TestRateLimitPerUser(t *testing.T) {
-	// Limpiar estado
-	Mu.Lock()
-	intentosUsuario = make(map[string]*models.Intento)
-	Mu.Unlock()
-
 	username := "victima"
 
 	// 9 fallos no deben bloquear
 	for i := 0; i < 9; i++ {
-		RegistrarFalloUsuario(username)
-		if IsUserBlocked(username) {
+		security.RegistrarFalloUsuario(username)
+		if security.IsUserBlocked(username) {
 			t.Errorf("Usuario bloqueado prematuramente en intento %d", i+1)
 		}
 	}
 
 	// El 10º fallo debe bloquear
-	RegistrarFalloUsuario(username)
-	if !IsUserBlocked(username) {
+	security.RegistrarFalloUsuario(username)
+	if !security.IsUserBlocked(username) {
 		t.Error("Usuario NO bloqueado tras 10 intentos")
 	}
 
 	// Resetear intentos (simula login exitoso)
-	ResetearIntentosUsuario(username)
-	if IsUserBlocked(username) {
+	security.ResetearIntentosUsuario(username)
+	if security.IsUserBlocked(username) {
 		t.Error("Usuario sigue bloqueado después de resetear")
 	}
 }

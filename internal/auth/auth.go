@@ -27,7 +27,7 @@ var encryptionKey []byte
 func init() {
 	key := os.Getenv("MASTER_KEY")
 	if key == "" {
-		log.Println("⚠ MASTER_KEY no configurada. El cifrado se inicializará cuando se llame a InitEncryption().")
+		log.Println("[WARN] MASTER_KEY no configurada. El cifrado se inicializará cuando se llame a InitEncryption().")
 		return
 	}
 	hash := sha256.Sum256([]byte(key))
@@ -229,6 +229,6 @@ func RotateMasterKey(oldKeyRaw, newKeyRaw string) (int, error) {
 		count++
 	}
 
-	db.LogEvent(fmt.Sprintf("⚿ MASTER_KEY rotada exitosamente. %d secretos TOTP re-cifrados.", count), "Sistema")
+	db.LogEvent(fmt.Sprintf("[PASS] MASTER_KEY rotada exitosamente. %d secretos TOTP re-cifrados.", count), "Sistema")
 	return count, nil
 }

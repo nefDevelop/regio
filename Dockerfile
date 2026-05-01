@@ -8,7 +8,7 @@ RUN go mod download && \
 
 # Etapa 2: Imagen final minimalista
 FROM alpine:latest
-RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata libcap && \
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata libcap mailcap && \
     adduser -D -u 1000 regio
 WORKDIR /home/regio
 COPY --from=builder --chown=regio:regio /app/REGIO .

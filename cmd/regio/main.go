@@ -13,24 +13,25 @@ import (
 	"regio/internal/auth"
 	"regio/internal/db"
 	"regio/internal/handlers"
+	"regio/internal/security"
 )
 
 func loadConfig() {
 	config, err := db.LoadConfig()
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Println("ℹ️ No se encontró config.json, iniciando con configuración vacía.")
+			log.Printf("%s No se encontró config.json, iniciando con configuración vacía.", db.PrefixINFO)
 		} else {
-			log.Printf("✕ ERROR cargando config.json: %v", err)
+			log.Printf("%s ERROR cargando config.json: %v", db.PrefixERR, err)
 		}
 		return
 	}
 
 	handlers.Mu.Lock()
 	handlers.Config = config
+	handlers.UpdateAllowedNetworksFromConfig()
 	handlers.Mu.Unlock()
 }
-
 func handleCLI() {
 	if len(os.Args) < 2 {
 		return
@@ -39,69 +40,69 @@ func handleCLI() {
 	cmd := os.Args[1]
 	switch cmd {
 	case "list":
-	        config, _ := db.LoadConfig()
-	        fmt.Println("\n📋 SERVICIOS CONFIGURADOS:")
-	        fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", "HOST", "TARGET", "PUBLIC", "BYPASS", "CSP")
-	        fmt.Println(strings.Repeat("-", 95))
+		config, _ := db.LoadConfig()
+		fmt.Printf("\n%s SERVICIOS CONFIGURADOS:\n", db.PrefixINFO)
+		fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", "HOST", "TARGET", "PUBLIC", "BYPASS", "CSP")
+		fmt.Println(strings.Repeat("-", 95))
 
-	        var hosts []string
-	        for h := range config.Servicios {
-	                hosts = append(hosts, h)
-	        }
-	        sort.Strings(hosts)
+		var hosts []string
+		for h := range config.Servicios {
+			hosts = append(hosts, h)
+		}
+		sort.Strings(hosts)
 
-	        for _, h := range hosts {
-	                isPublic := "No"
-	                if config.Publicos[h] {
-	                        isPublic = "Sí"
-	                }
-	                bypass := config.BypassHeaders[h]
-	                csp := config.CSPs[h]
-	                if len(csp) > 20 {
-	                        csp = csp[:17] + "..."
-	                }
-	                fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", h, config.Servicios[h], isPublic, bypass, csp)
-	        }
-	        fmt.Println()
-	        os.Exit(0)
+		for _, h := range hosts {
+			isPublic := "No"
+			if config.Publicos[h] {
+				isPublic = "Sí"
+			}
+			bypass := config.BypassHeaders[h]
+			csp := config.CSPs[h]
+			if len(csp) > 20 {
+				csp = csp[:17] + "..."
+			}
+			fmt.Printf("%-20s %-25s %-8s %-15s %-20s\n", h, config.Servicios[h], isPublic, bypass, csp)
+		}
+		fmt.Println()
+		os.Exit(0)
 
 	case "add":
-	        addCmd := flag.NewFlagSet("add", flag.ExitOnError)
-	        host := addCmd.String("host", "", "Dominio (ej: app.com)")
-	        target := addCmd.String("target", "", "Destino interno (ej: http://10.0.0.5:8080)")
-	        public := addCmd.Bool("public", false, "Hacer servicio público")
-	        bypass := addCmd.String("bypass", "", "Header de bypass (ej: X-My-Key:Value)")
-	        csp := addCmd.String("csp", "", "Content Security Policy")
-	        addCmd.Parse(os.Args[2:])
+		addCmd := flag.NewFlagSet("add", flag.ExitOnError)
+		host := addCmd.String("host", "", "Dominio (ej: app.com)")
+		target := addCmd.String("target", "", "Destino interno (ej: http://10.0.0.5:8080)")
+		public := addCmd.Bool("public", false, "Hacer servicio público")
+		bypass := addCmd.String("bypass", "", "Header de bypass (ej: X-My-Key:Value)")
+		csp := addCmd.String("csp", "", "Content Security Policy")
+		addCmd.Parse(os.Args[2:])
 
-	        if *host == "" || *target == "" {
-	                fmt.Println("✕ Error: --host y --target son obligatorios")
-	                addCmd.Usage()
-	                os.Exit(1)
-	        }
+		if *host == "" || *target == "" {
+			fmt.Printf("%s Error: --host y --target son obligatorios\n", db.PrefixERR)
+			addCmd.Usage()
+			os.Exit(1)
+		}
 
-	        err := db.AddService(*host, *target, *public, *bypass, *csp)
-	        if err != nil {
-	                log.Fatalf("✕ Error guardando servicio: %v", err)
-	        }
-	        fmt.Printf("✅ Servicio añadido/actualizado: %s -> %s (Público: %v)\n", *host, *target, *public)
-	        os.Exit(0)
+		err := db.AddService(*host, *target, *public, *bypass, *csp)
+		if err != nil {
+			log.Fatalf("%s Error guardando servicio: %v", db.PrefixERR, err)
+		}
+		fmt.Printf("%s Servicio añadido/actualizado: %s -> %s (Público: %v)\n", db.PrefixOK, *host, *target, *public)
+		os.Exit(0)
 	case "del":
 		delCmd := flag.NewFlagSet("del", flag.ExitOnError)
 		host := delCmd.String("host", "", "Dominio a eliminar")
 		delCmd.Parse(os.Args[2:])
 
 		if *host == "" {
-			fmt.Println("✕ Error: --host es obligatorio")
+			fmt.Printf("%s Error: --host es obligatorio\n", db.PrefixERR)
 			delCmd.Usage()
 			os.Exit(1)
 		}
 
 		err := db.DeleteService(*host)
 		if err != nil {
-			log.Fatalf("✕ Error eliminando servicio: %v", err)
+			log.Fatalf("%s Error eliminando servicio: %v", db.PrefixERR, err)
 		}
-		fmt.Printf("✅ Servicio eliminado: %s\n", *host)
+		fmt.Printf("%s Servicio eliminado: %s\n", db.PrefixOK, *host)
 		os.Exit(0)
 
 	case "rotate-key":
@@ -111,53 +112,54 @@ func handleCLI() {
 		rotateCmd.Parse(os.Args[2:])
 
 		if *oldKey == "" || *newKey == "" {
-			fmt.Println("✕ Error: --old y --new son obligatorios")
+			fmt.Printf("%s Error: --old y --new son obligatorios\n", db.PrefixERR)
 			rotateCmd.Usage()
 			os.Exit(1)
 		}
 
-		fmt.Println("⏳ Rotando MASTER_KEY y re-cifrando secretos...")
+		fmt.Printf("%s Rotando MASTER_KEY y re-cifrando secretos...\n", db.PrefixINFO)
 		count, err := auth.RotateMasterKey(*oldKey, *newKey)
 		if err != nil {
-			log.Fatalf("✕ ERROR FATAL durante la rotación: %v", err)
+			log.Fatalf("%s ERROR FATAL durante la rotación: %v", db.PrefixERR, err)
 		}
-		fmt.Printf("✅ Rotación completada con éxito. %d secretos re-cifrados.\n", count)
-		fmt.Println("⚠️  IMPORTANTE: Actualiza ahora tu archivo .env con la nueva MASTER_KEY y reinicia el contenedor.")
+		fmt.Printf("%s Rotación completada con éxito. %d secretos re-cifrados.\n", db.PrefixOK, count)
+		fmt.Printf("%s IMPORTANTE: Actualiza ahora tu archivo .env con la nueva MASTER_KEY y reinicia el contenedor.\n", db.PrefixWARN)
 		os.Exit(0)
 	}
 }
 
 func main() {
-	log.Println("🚀 Iniciando ReGiO...")
+	log.Printf("%s Iniciando reGIO...", db.PrefixREGIO)
 
 	handlers.AdminDomain = os.Getenv("ADMIN_DOMAIN")
 	if handlers.AdminDomain == "" {
-		log.Println("✕ ERROR: Configura la variable de entorno ADMIN_DOMAIN")
-		log.Fatal("✕ ERROR: Configura la variable de entorno ADMIN_DOMAIN")
+		log.Printf("%s ERROR: Configura la variable de entorno ADMIN_DOMAIN", db.PrefixERR)
+		log.Fatal("ERROR: Configura la variable de entorno ADMIN_DOMAIN")
 	}
-	log.Printf("ℹ️ Admin Domain: %s", handlers.AdminDomain)
+	log.Printf("%s Admin Domain: %s", db.PrefixINFO, handlers.AdminDomain)
 
 	// 1. Verificar clave maestra de cifrado
-	log.Println("ℹ️ Verificando clave maestra de cifrado...")
+
+	log.Printf("%s Verificando clave maestra de cifrado...", db.PrefixINFO)
 	auth.InitEncryption()
-	log.Println("✅ Clave maestra verificada.")
+	log.Printf("%s Clave maestra verificada.", db.PrefixOK)
 
 	// 2. Inicializar DB
-	log.Println("ℹ️ Inicializando Base de Datos...")
+	log.Printf("%s Inicializando Base de Datos...", db.PrefixINFO)
 	db.InitDB()
-	log.Println("✅ Base de Datos inicializada.")
+	log.Printf("%s Base de Datos inicializada.", db.PrefixOK)
 
 	// 2. Comprobar si necesita instalación inicial
 	handlers.NeedsSetup = db.CheckNeedsSetup()
-	log.Printf("ℹ️ Necesita instalación (Setup): %v", handlers.NeedsSetup)
+	log.Printf("%s Necesita instalación (Setup): %v", db.PrefixINFO, handlers.NeedsSetup)
 
 	// 3. Inicializar plantillas y recursos internos
-	log.Println("ℹ️ Inicializando plantillas y recursos...")
+	log.Printf("%s Inicializando plantillas y recursos...", db.PrefixINFO)
 	handlers.Init()
-	log.Println("✅ Recursos inicializados.")
+	log.Printf("%s Recursos inicializados.", db.PrefixOK)
 
 	// 4. Cargar configuración de servicios
-	log.Println("ℹ️ Cargando configuración de servicios...")
+	log.Printf("%s Cargando configuración de servicios...", db.PrefixINFO)
 	loadConfig()
 
 	// 5. Manejar comandos CLI (si existen)
@@ -167,19 +169,12 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Hour)
-			handlers.Mu.Lock()
-			for ip, intento := range handlers.IntentosDB {
-				if time.Now().After(intento.BloqueadoHasta) {
-					delete(handlers.IntentosDB, ip)
-				}
-			}
-			handlers.Mu.Unlock()
+			security.LimpiarBloqueosExpirados()
+			security.LimpiarRateLimiter()
+			security.LimpiarIntentosUsuario()
 			handlers.CleanupSessions()
-			handlers.LimpiarRateLimiter()
-			handlers.LimpiarIntentosUsuario()
 		}
 	}()
-
 	// Router Principal
 	tlsCert := os.Getenv("TLS_CERT")
 	tlsKey := os.Getenv("TLS_KEY")
@@ -189,7 +184,7 @@ func main() {
 
 	if tlsCert != "" && tlsKey != "" {
 		// Modo TLS: HTTPS en :443 + redirección HTTP en :80
-		log.Printf("⎈ REGIO Blindado Iniciado con TLS. Admin en: https://%s/admin", handlers.AdminDomain)
+		log.Printf("%s reGIO Iniciado con TLS. Admin en: https://%s/admin", db.PrefixREGIO, handlers.AdminDomain)
 
 		// Servidor HTTPS
 		tlsServer := &http.Server{
@@ -212,14 +207,14 @@ func main() {
 				ReadTimeout:  5 * time.Second,
 				WriteTimeout: 5 * time.Second,
 			}
-			log.Println("ℹ️ Servidor HTTP en :80 redirigiendo a HTTPS")
+			log.Printf("%s Servidor HTTP en :80 redirigiendo a HTTPS", db.PrefixINFO)
 			if err := httpServer.ListenAndServe(); err != nil {
-				log.Printf("⚠ Servidor HTTP de redirección falló: %v", err)
+				log.Printf("%s Servidor HTTP de redirección falló: %v", db.PrefixWARN, err)
 			}
 		}()
 
 		if err := tlsServer.ListenAndServeTLS(tlsCert, tlsKey); err != nil {
-			log.Fatalf("✕ ERROR FATAL al iniciar servidor TLS: %v", err)
+			log.Fatalf("%s ERROR FATAL al iniciar servidor TLS: %v", db.PrefixERR, err)
 		}
 	} else {
 		// Modo HTTP estándar (detrás de proxy/tunnel)
@@ -236,7 +231,7 @@ func main() {
 			})
 		}
 
-		log.Printf("⎈ REGIO Blindado Iniciado. Admin en: https://%s/admin. Escuchando en :80", handlers.AdminDomain)
+		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :80", db.PrefixREGIO, handlers.AdminDomain)
 
 		server := &http.Server{
 			Addr:         ":80",
@@ -247,7 +242,8 @@ func main() {
 		}
 
 		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("✕ ERROR FATAL al iniciar el servidor: %v", err)
+			log.Fatalf("%s ERROR FATAL al iniciar el servidor: %v", db.PrefixERR, err)
 		}
 	}
 }
+

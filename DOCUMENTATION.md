@@ -1,6 +1,6 @@
 # Documentación Técnica de ReGiO (Reverse Gateway for Internal Operations)
 
-ReGiO es un proxy inverso blindado diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques.
+ReGiO es un proxy inverso diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques.
 
 ---
 

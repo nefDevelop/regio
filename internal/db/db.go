@@ -262,6 +262,31 @@ func DeleteBypassKey(token string) error {
 	return err
 }
 
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorPurple = "\033[35m"
+	ColorCyan   = "\033[36m"
+
+	// Prefijos con estilo para logs
+	PrefixOK    = ColorGreen + "[OK]" + ColorReset
+	PrefixERR   = ColorRed + "[ERR]" + ColorReset
+	PrefixWARN  = ColorYellow + "[WARN]" + ColorReset
+	PrefixINFO  = ColorBlue + "[INFO]" + ColorReset
+	PrefixSEC   = ColorPurple + "[SEC]" + ColorReset
+	PrefixSCAN  = ColorCyan + "[SCAN]" + ColorReset
+	PrefixBLOCK = ColorRed + "[BLOCK]" + ColorReset
+	PrefixKEY   = ColorYellow + "[KEY]" + ColorReset
+	PrefixPASS  = ColorCyan + "[PASS]" + ColorReset
+	PrefixUSER  = ColorGreen + "[USER]" + ColorReset
+	PrefixIN    = ColorBlue + "<-" + ColorReset
+	PrefixOUT   = ColorBlue + "->" + ColorReset
+	PrefixREGIO = ColorPurple + "[reGIO]" + ColorReset
+)
+
 func LogEvent(message string, performer string) {
 	if DB != nil {
 		DB.Exec("INSERT INTO events (message, performer) VALUES (?, ?)", message, performer)

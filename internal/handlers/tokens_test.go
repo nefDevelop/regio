@@ -7,16 +7,16 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
 
 	"regio/internal/db"
+	"regio/internal/security"
 )
 
 func TestMainHandlerTokens(t *testing.T) {
 	// 1. Configuración de prueba
 	db.InitDB()
-	AllowLoopback = true
-	defer func() { AllowLoopback = false }()
+	security.AllowLoopback = true
+	defer func() { security.AllowLoopback = false }()
 	
 	// Backend mock para recibir las peticiones del proxy
 	backendCalled := false
@@ -129,8 +129,8 @@ func TestMainHandlerTokens(t *testing.T) {
 
 func TestSecurityAttacks(t *testing.T) {
 	db.InitDB()
-	AllowLoopback = true
-	defer func() { AllowLoopback = false }()
+	security.AllowLoopback = true
+	defer func() { security.AllowLoopback = false }()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -156,9 +156,7 @@ func TestSecurityAttacks(t *testing.T) {
 
 	t.Run("Rate Limiting", func(t *testing.T) {
 		// Reset rate limiter for this test
-		Mu.Lock()
-		peticionesDB = make(map[string][]time.Time)
-		Mu.Unlock()
+		security.ResetRateLimiter()
 
 		ip := "1.2.3.4"
 		for i := 0; i < 100; i++ {
@@ -185,11 +183,11 @@ func TestSecurityAttacks(t *testing.T) {
 
 	t.Run("IP Blocking", func(t *testing.T) {
 		ip := "9.9.9.9"
-		RegistrarFallo(ip)
-		RegistrarFallo(ip)
-		RegistrarFallo(ip)
-		RegistrarFallo(ip)
-		RegistrarFallo(ip) // 5 fallos bloquean
+		security.RegistrarFallo(ip)
+		security.RegistrarFallo(ip)
+		security.RegistrarFallo(ip)
+		security.RegistrarFallo(ip)
+		security.RegistrarFallo(ip) // 5 fallos bloquean
 
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = ip + ":1234"
@@ -204,15 +202,15 @@ func TestSecurityAttacks(t *testing.T) {
 
 	t.Run("SSRF Prevention - Adding Private IP", func(t *testing.T) {
 		// Restaurar AllowLoopback a false para esta subprueba específica
-		AllowLoopback = false
-		defer func() { AllowLoopback = true }()
+		security.AllowLoopback = false
+		defer func() { security.AllowLoopback = true }()
 
-		err := isValidTarget("http://192.168.1.1")
+		err := security.IsValidTarget("http://192.168.1.1")
 		if err != nil {
 			t.Errorf("Private IP (RFC 1918) should be allowed, but got error: %v", err)
 		}
 		
-		err = isValidTarget("http://localhost:8080")
+		err = security.IsValidTarget("http://localhost:8080")
 		if err == nil {
 			t.Error("Should have blocked localhost")
 		}

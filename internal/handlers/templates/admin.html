@@ -22,9 +22,80 @@
       }
       .bridge-form-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-template-columns: repeat(3, 1fr);
         gap: 16px;
-        align-items: end;
+        align-items: flex-end;
+      }
+      .input-group label {
+        display: block;
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .public-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+        height: 44px;
+        color: var(--text-muted);
+        font-size: 13px;
+        user-select: none;
+        white-space: nowrap;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 0 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        width: 100%;
+        transition: all 0.2s;
+      }
+      .public-check:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+      .custom-checkbox {
+        width: 18px !important;
+        height: 18px !important;
+        margin: 0 !important;
+        cursor: pointer;
+        flex-shrink: 0;
+        accent-color: var(--primary);
+        appearance: checkbox !important;
+        -webkit-appearance: checkbox !important;
+        background: transparent !important;
+      }
+      .token-field {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .token-field input {
+        flex: 1;
+      }
+      .btn-gen-token {
+        background: rgba(99, 102, 241, 0.1);
+        color: #818cf8;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        height: 44px;
+        padding: 0 16px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-gen-token:hover {
+        background: rgba(99, 102, 241, 0.2);
+      }
+      .btn-create-bridge {
+        background: var(--success) !important;
+        color: white !important;
+        height: 44px !important;
+        width: 100% !important;
+        border-radius: 12px !important;
+        font-weight: bold !important;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
       }
       /* Modal Styles */
       .modal-overlay {
@@ -80,6 +151,30 @@
         cursor: pointer;
         font-weight: bold;
       }
+      .copy-ip-btn {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+        padding: 2px 6px;
+        height: 22px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        margin-left: 4px;
+        vertical-align: middle;
+      }
+      .copy-ip-btn:hover {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: rgba(99, 102, 241, 0.3);
+        color: #818cf8;
+      }
+      .copy-ip-btn svg {
+        width: 10px;
+        height: 10px;
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -88,8 +183,8 @@
         <img src="/static/reGIO.svg" alt="logo" style="height: 32px; margin-right: 12px; filter: invert(1)" />reGIO Admin
       </h1>
       <div style="display: flex; align-items: center; gap: 16px">
-        <a href="/profile" class="btn-primary btn-header">Mi Perfil</a>
-        <a href="/logout" class="btn-logout btn-header btn-logout-custom">SALIR</a>
+        <a href="/profile" class="btn-primary">Mi Perfil</a>
+        <a href="/logout" class="btn-del">SALIR</a>
       </div>
     </div>
 
@@ -140,8 +235,8 @@
                 <input type="text" form="form-{{.Host}}" name="target" value="{{.Target}}" class="edit-mode" style="display: none" />
               </td>
               <td>
-                <button class="btn-primary" onclick="openCspManager('{{.Host}}')" style="height: 32px; font-size: 11px; background: rgba(129, 140, 248, 0.1); border: 1px solid rgba(129, 140, 248, 0.2); color: #818cf8;">
-                  🛡️ Reglas CSP
+                <button class="btn-edit" onclick="openCspManager('{{.Host}}')">
+                  Reglas CSP
                 </button>
                 <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
               </td>
@@ -221,18 +316,13 @@
                 placeholder="Genera o pega uno..."
                 style="background: rgba(0, 0, 0, 0.2)"
               />
-              <button type="button" class="btn-gen-token" onclick="genTk()" style="padding: 0 12px; font-size: 12px">Gen</button>
+              <button type="button" class="btn-gen-token" onclick="genTk()">Gen</button>
             </div>
-          </div>
-
-          <div class="input-group" style="grid-column: span 2;">
-            <label>Content Security Policy (CSP)</label>
-            <input type="text" name="csp" placeholder="default-src 'self'; ..." style="font-size: 12px;" />
           </div>
 
           <div class="input-group">
             <label>&nbsp;</label>
-            <button type="submit" class="btn-create-bridge" style="width: 100%">Añadir</button>
+            <button type="submit" class="btn-create-bridge">Añadir</button>
           </div>
         </form>
       </div>
@@ -267,7 +357,7 @@
               <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #fca5a5; font-size: 10px;">{{.ViolatedDirective}}</span></td>
               <td style="font-size: 11px; color: #64748b;">{{.CreatedAt}}</td>
               <td>
-                <button onclick="quickAllow('{{.Host}}', '{{.BlockedURI}}')" class="btn-success" style="height: 28px; padding: 0 10px; font-size: 10px;">
+                <button onclick="quickAllow('{{.Host}}', '{{.BlockedURI}}')" class="btn-success btn-small">
                   Permitir
                 </button>
               </td>
@@ -389,8 +479,8 @@
                     name="accion"
                     value="revoke_session"
                   /><input type="hidden" name="token" value="{{.Token}}" /><button
-                    class="btn-del"
-                    style="height: 32px; width: 32px; padding: 0"
+                    class="btn-del btn-small"
+                    style="width: 32px; padding: 0"
                   >
                     X
                   </button>
@@ -453,8 +543,12 @@
           <code style="color: #4ade80; font-size: 14px">./REGIO add --host app.io --target http://ip:80 [--public] [--csp "..."]</code>
         </div>
         <div style="background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #1e293b">
-          <h3 style="font-size: 12px; text-transform: uppercase; color: #475569; margin-bottom: 10px">Eliminar</h3>
+          <h3 style="font-size: 12px; text-transform: uppercase; color: #475569; margin-bottom: 10px">Eliminar Puente</h3>
           <code style="color: #4ade80; font-size: 14px">./REGIO del --host app.io</code>
+        </div>
+        <div style="background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #1e293b">
+          <h3 style="font-size: 12px; text-transform: uppercase; color: #475569; margin-bottom: 10px">Rotar Master Key</h3>
+          <code style="color: #4ade80; font-size: 14px">./REGIO rotate-key --old OLD_KEY --new NEW_KEY</code>
         </div>
       </div>
     </div>
@@ -694,7 +788,7 @@
         navigator.clipboard.writeText(text).then(
           function() {
             var originalContent = button.innerHTML;
-            button.innerHTML = "✓";
+            button.innerHTML = "OK";
             button.style.color = "#4ade80";
             setTimeout(function() {
               button.innerHTML = originalContent;
