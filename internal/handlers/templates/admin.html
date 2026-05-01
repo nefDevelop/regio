@@ -37,6 +37,7 @@
       .public-check {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 12px;
         cursor: pointer;
         height: 44px;
@@ -62,9 +63,25 @@
         cursor: pointer;
         flex-shrink: 0;
         accent-color: var(--primary);
-        appearance: checkbox !important;
-        -webkit-appearance: checkbox !important;
-        background: transparent !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 4px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s;
+      }
+      .custom-checkbox:checked {
+        background: var(--primary) !important;
+        border-color: var(--primary) !important;
+      }
+      .custom-checkbox:checked::after {
+        content: "✓";
+        color: white;
+        font-size: 12px;
+        font-weight: bold;
       }
       .token-field {
         display: flex;
@@ -115,8 +132,8 @@
         background: #1e293b;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 20px;
-        width: 90%;
-        max-width: 600px;
+        width: 95%;
+        max-width: 1100px;
         padding: 32px;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
       }
@@ -515,7 +532,7 @@
     </div>
 
     <div id="service-modal" class="modal-overlay">
-      <div class="modal-content" style="max-width: 900px; width: 95%;">
+      <div class="modal-content" style="max-width: 1100px; width: 95%;">
         <div class="modal-header">
           <h3 id="modal-host">Gestión del Servicio</h3>
           <button class="btn-logout" onclick="closeServiceModal()" style="height: 32px; width: 32px; padding: 0">X</button>
