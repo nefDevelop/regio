@@ -35,14 +35,13 @@
         letter-spacing: 0.5px;
       }
       .public-check {
-        display: inline-flex;
+        display: flex;
         align-items: center;
-        justify-content: flex-start;
         gap: 12px;
         cursor: pointer;
         height: 44px;
-        color: var(--text-muted);
-        font-size: 13px;
+        color: var(--text);
+        font-size: 14px;
         user-select: none;
         white-space: nowrap;
         background: rgba(255, 255, 255, 0.03);
@@ -63,13 +62,35 @@
         padding: 0 !important;
         cursor: pointer;
         flex-shrink: 0;
-        accent-color: var(--primary);
-        appearance: checkbox !important;
-        -webkit-appearance: checkbox !important;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        background: rgba(0, 0, 0, 0.5) !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+        border-radius: 4px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s;
+        position: relative !important;
+      }
+      .custom-checkbox:hover {
+        border-color: var(--primary) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+      }
+      .custom-checkbox:checked {
+        background: var(--primary) !important;
+        border-color: var(--primary) !important;
+      }
+      .custom-checkbox:checked::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 6px;
+        width: 4px;
+        height: 8px;
+        border: solid white;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
       }
       .token-field {
         display: flex;
@@ -520,7 +541,7 @@
     </div>
 
     <div id="service-modal" class="modal-overlay">
-      <div class="modal-content" style="max-width: 800px; width: 95%;">
+      <div class="modal-content" style="max-width: 1200px; width: 95%;">
         <div class="modal-header">
           <h3 id="modal-host">Gestión del Servicio</h3>
           <button class="btn-logout" onclick="closeServiceModal()" style="height: 32px; width: 32px; padding: 0">X</button>
