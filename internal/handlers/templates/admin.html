@@ -37,7 +37,7 @@
       .public-check {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 12px;
         cursor: pointer;
         height: 44px;
@@ -60,28 +60,16 @@
         width: 18px !important;
         height: 18px !important;
         margin: 0 !important;
+        padding: 0 !important;
         cursor: pointer;
         flex-shrink: 0;
         accent-color: var(--primary);
-        appearance: none !important;
-        -webkit-appearance: none !important;
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 4px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        transition: all 0.2s;
-      }
-      .custom-checkbox:checked {
-        background: var(--primary) !important;
-        border-color: var(--primary) !important;
-      }
-      .custom-checkbox:checked::after {
-        content: "✓";
-        color: white;
-        font-size: 12px;
-        font-weight: bold;
+        appearance: checkbox !important;
+        -webkit-appearance: checkbox !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
       }
       .token-field {
         display: flex;
@@ -532,84 +520,80 @@
     </div>
 
     <div id="service-modal" class="modal-overlay">
-      <div class="modal-content" style="max-width: 1100px; width: 95%;">
+      <div class="modal-content" style="max-width: 800px; width: 95%;">
         <div class="modal-header">
           <h3 id="modal-host">Gestión del Servicio</h3>
           <button class="btn-logout" onclick="closeServiceModal()" style="height: 32px; width: 32px; padding: 0">X</button>
         </div>
 
-        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-          <!-- Columna Izquierda: Configuración CSP y Bypass Keys -->
-          <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 20px;">
-            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
-              <h4 style="margin-top: 0; color: #818cf8; margin-bottom: 12px;">Seguridad (CSP)</h4>
-              <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
-                Permite o bloquea recursos externos cargados por este servicio.
-              </p>
+        <div style="display: flex; flex-direction: column; gap: 24px; max-height: 75vh; overflow-y: auto; padding-right: 6px;">
+          <!-- Bloque 1: Configuración CSP -->
+          <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h4 style="margin-top: 0; color: #818cf8; margin-bottom: 12px;">Seguridad (CSP)</h4>
+            <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
+              Permite o bloquea recursos externos cargados por este servicio.
+            </p>
 
-              <div class="input-group">
-                <label>Añadir Nuevo Dominio/Recurso</label>
-                <div style="display: flex; gap: 8px">
-                  <input type="text" id="new-csp-item" placeholder="ej: https://cdn.example.com" style="flex: 1" />
-                  <button class="btn-success" onclick="addCspItem()" style="height: 44px">Permitir</button>
-                </div>
-              </div>
-
-              <div style="margin-top: 24px; margin-bottom: 24px;">
-                <label style="font-size: 12px; color: #64748b; text-transform: uppercase">Recursos Permitidos Actualmente</label>
-                <div id="csp-tags" class="csp-tag-list">
-                  <!-- Tags will be injected here -->
-                </div>
-              </div>
-
-              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 16px;">
-                <button class="btn-primary" onclick="saveCspChanges()" style="height: 44px; padding: 0 24px">Guardar Reglas CSP</button>
-              </div>
-
-              <h5 style="margin-bottom: 8px; font-size: 13px;">Alertas CSP Recientes</h5>
-              <div style="max-height: 200px; overflow-y: auto; background: rgba(15,23,42,0.5); border-radius: 6px;">
-                <table style="font-size: 12px;" id="modal-csp-table">
-                  <thead>
-                    <tr>
-                      <th>Recurso Bloqueado</th>
-                      <th>Directiva</th>
-                    </tr>
-                  </thead>
-                  <tbody id="modal-csp-body">
-                    <tr><td colspan="2" style="text-align: center; color: #71717a">Cargando...</td></tr>
-                  </tbody>
-                </table>
+            <div class="input-group">
+              <label>Añadir Nuevo Dominio/Recurso</label>
+              <div style="display: flex; gap: 8px">
+                <input type="text" id="new-csp-item" placeholder="ej: https://cdn.example.com" style="flex: 1" />
+                <button class="btn-success" onclick="addCspItem()" style="height: 44px">Permitir</button>
               </div>
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
-              <h4 style="margin-top: 0; color: #fbbf24; margin-bottom: 12px;">Tokens de Bypass Activos</h4>
-              <ul id="modal-bypass-list" style="list-style: none; padding: 0; margin: 0; font-size: 13px;">
-                <li style="color: #71717a">Cargando...</li>
-              </ul>
+            <div style="margin-top: 24px; margin-bottom: 24px;">
+              <label style="font-size: 12px; color: #64748b; text-transform: uppercase">Recursos Permitidos Actualmente</label>
+              <div id="csp-tags" class="csp-tag-list">
+                <!-- Tags will be injected here -->
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 16px;">
+              <button class="btn-primary" onclick="saveCspChanges()" style="height: 44px; padding: 0 24px">Guardar Reglas CSP</button>
+            </div>
+
+            <h5 style="margin-bottom: 8px; font-size: 13px;">Alertas CSP Recientes</h5>
+            <div style="max-height: 180px; overflow-y: auto; background: rgba(15,23,42,0.5); border-radius: 6px;">
+              <table style="font-size: 12px;" id="modal-csp-table">
+                <thead>
+                  <tr>
+                    <th>Recurso Bloqueado</th>
+                    <th>Directiva</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-csp-body">
+                  <tr><td colspan="2" style="text-align: center; color: #71717a">Cargando...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <!-- Columna Derecha: Logs -->
-          <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column;">
-            <div style="background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; flex-grow: 1; display: flex; flex-direction: column;">
-              <h4 style="margin-top: 0; color: #4ade80; margin-bottom: 12px;">Registro de Eventos</h4>
-              <div
-                id="modal-events-log"
-                style="
-                  flex-grow: 1;
-                  min-height: 200px;
-                  max-height: 550px;
-                  overflow-y: auto;
-                  background: rgba(15,23,42,0.5);
-                  border-radius: 6px;
-                  padding: 12px;
-                  font-family: ui-monospace, monospace;
-                  font-size: 12px;
-                "
-              >
-                <div style="color: #71717a">Cargando eventos...</div>
-              </div>
+          <!-- Bloque 2: Bypass Tokens -->
+          <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h4 style="margin-top: 0; color: #fbbf24; margin-bottom: 12px;">Tokens de Bypass Activos</h4>
+            <ul id="modal-bypass-list" style="list-style: none; padding: 0; margin: 0; font-size: 13px;">
+              <li style="color: #71717a">Cargando...</li>
+            </ul>
+          </div>
+
+          <!-- Bloque 3: Event Registry -->
+          <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h4 style="margin-top: 0; color: #4ade80; margin-bottom: 12px;">Registro de Eventos</h4>
+            <div
+              id="modal-events-log"
+              style="
+                min-height: 180px;
+                max-height: 400px;
+                overflow-y: auto;
+                background: rgba(15,23,42,0.5);
+                border-radius: 6px;
+                padding: 12px;
+                font-family: ui-monospace, monospace;
+                font-size: 12px;
+              "
+            >
+              <div style="color: #71717a">Cargando eventos...</div>
             </div>
           </div>
         </div>
