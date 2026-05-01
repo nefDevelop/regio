@@ -180,16 +180,16 @@ func LoadConfig() (models.Config, error) {
 	// 1. Verificar si existe config.json para migración
 	jsonPath := "./data/config.json"
 	if _, err := os.Stat(jsonPath); err == nil {
-		log.Println("ℹ️ Detectado config.json antiguo. Migrando a Base de Datos...")
+		log.Println("[INFO] Detectado config.json antiguo. Migrando a Base de Datos...")
 		data, _ := os.ReadFile(jsonPath)
 		var oldConfig models.Config
 		if err := json.Unmarshal(data, &oldConfig); err == nil {
 			err = SaveConfig(oldConfig)
 			if err == nil {
-				log.Println("✅ Migración completada exitosamente.")
+				log.Println("[OK] Migración completada exitosamente.")
 				os.Rename(jsonPath, jsonPath+".bak")
 			} else {
-				log.Printf("✕ Error migrando datos: %v", err)
+				log.Printf("[ERR] Error migrando datos: %v", err)
 			}
 		}
 	}
@@ -231,7 +231,7 @@ func DeleteService(host string) error {
 func SaveCSPReport(host, blocked, directive, policy string) {
 	_, err := DB.Exec("INSERT INTO csp_reports (host, blocked_uri, violated_directive, original_policy) VALUES (?, ?, ?, ?)", host, blocked, directive, policy)
 	if err != nil {
-		log.Printf("❌ Error guardando reporte CSP: %v", err)
+		log.Printf("[ERR] Error guardando reporte CSP: %v", err)
 	}
 }
 

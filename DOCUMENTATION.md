@@ -33,11 +33,17 @@ Monitoriza intentos fallidos de login:
 ReGiO no confía ciegamente en cabeceras como `CF-Connecting-IP`. Solo se leen estas cabeceras si la petición proviene de una IP autorizada en la variable `TRUSTED_PROXIES`.
 
 ### Protección SSRF Avanzada
-La función `isValidTarget` bloquea cualquier intento de apuntar el proxy a:
-*   Rangos de IP privados (RFC 1918).
+La función `SafeDialContext` (utilizada por el proxy) bloquea cualquier intento de conectar a:
+*   Rangos de IP privados (RFC 1918), **a menos que estén autorizados**.
 *   Interfaces de loopback y localhost.
 *   Direcciones Link-local e IPv6 ULA.
-*   *Protección DNS:* El sistema resuelve dominios antes de conectar para verificar que no ocultan IPs restringidas.
+
+**Autorización de IPs Privadas:**
+ReGiO permite el acceso a IPs privadas en dos casos:
+1.  **Automático:** Cualquier IP configurada como `target` de un servicio se añade automáticamente a la lista blanca al arrancar o al modificar el servicio.
+2.  **Manual:** Mediante la variable de entorno `ALLOWED_NETWORKS`.
+
+*   *Protección DNS:* El sistema resuelve dominios antes de conectar para verificar que no ocultan IPs restringidas (DNS Rebinding protection).
 
 ### Hardening de Cabeceras
 Cada respuesta incluye: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block` y `Strict-Transport-Security`.
@@ -78,7 +84,8 @@ ReGiO utiliza un transporte HTTP personalizado para sus operaciones de proxy:
 
 *   **ADMIN_DOMAIN:** Dominio donde reside el panel administrativo.
 *   **MASTER_KEY:** (**Obligatoria**) Clave para el cifrado AES de secretos TOTP. La aplicación no arrancará sin ella.
-*   **TRUSTED_PROXIES:** Lista separada por comas de IPs o rangos CIDR autorizados.
+*   **TRUSTED_PROXIES:** Lista separada por comas de IPs o rangos CIDR autorizados para enviar cabeceras de IP real.
+*   **ALLOWED_NETWORKS:** Lista separada por comas de IPs o rangos CIDR privados que ReGiO tiene permitido contactar (ej: `192.168.30.0/24, 10.0.0.1`).
 
 ---
 

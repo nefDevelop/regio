@@ -453,12 +453,20 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				db.LogEvent(fmt.Sprintf("%s IP/Rango desbloqueado: %s", db.PrefixOK, targetIP), user.Username)
 
 		case "revoke_session":
-			tokenToRevoke := r.FormValue("token")
+			tokensToRevoke := r.Form["tokens"]
+			if len(tokensToRevoke) == 0 {
+				// Fallback para cuando solo viene un 'token' (antiguo comportamiento o individual)
+				if t := r.FormValue("token"); t != "" {
+					tokensToRevoke = []string{t}
+				}
+			}
 			Mu.Lock()
-			delete(ActiveSessions, tokenToRevoke)
+			for _, t := range tokensToRevoke {
+				delete(ActiveSessions, t)
+				db.DB.Exec("DELETE FROM sessions WHERE token = ?", t)
+			}
 			Mu.Unlock()
-			db.DB.Exec("DELETE FROM sessions WHERE token = ?", tokenToRevoke)
-			db.LogEvent(fmt.Sprintf("%s Sesión revocada por el administrador: %s", db.PrefixBLOCK, user.Username), user.Username)
+			db.LogEvent(fmt.Sprintf("%s %d sesiones revocadas por el administrador", db.PrefixBLOCK, len(tokensToRevoke)), user.Username)
 
 		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -553,24 +561,54 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	type GlobalSessionDisplay struct {
-		Token      string
 		Username   string
 		IP         string
 		LastActive string
+		Count      int
 		IsCurrent  bool
+		Tokens     []string // Guardar tokens para revocación masiva si se desea
 	}
 	var allSessions []GlobalSessionDisplay
+	sessionMap := make(map[string]*GlobalSessionDisplay)
+
 	Mu.Lock()
 	for token, sUser := range ActiveSessions {
-		allSessions = append(allSessions, GlobalSessionDisplay{
-			Token:      token,
-			Username:   sUser.Username,
-			IP:         sUser.RemoteIP,
-			LastActive: RelTime(sUser.LastActive),
-			IsCurrent:  token == cookieHash,
-		})
+		key := sUser.Username + "|" + sUser.RemoteIP
+		if s, exists := sessionMap[key]; exists {
+			s.Count++
+			s.Tokens = append(s.Tokens, token)
+			if token == cookieHash {
+				s.IsCurrent = true
+			}
+		} else {
+			sd := &GlobalSessionDisplay{
+				Username:   sUser.Username,
+				IP:         sUser.RemoteIP,
+				LastActive: RelTime(sUser.LastActive),
+				Count:      1,
+				IsCurrent:  token == cookieHash,
+				Tokens:     []string{token},
+			}
+			sessionMap[key] = sd
+			allSessions = append(allSessions, *sd)
+		}
 	}
 	Mu.Unlock()
+
+	// Actualizar el slice con los datos finales del mapa (para mantener punteros/conteos si fuera necesario)
+	// Pero como ya añadimos el struct al slice, necesitamos reconstruirlo o usar punteros.
+	// Re-recorrer el slice para asignar los valores finales.
+	for i := range allSessions {
+		key := allSessions[i].Username + "|" + allSessions[i].IP
+		allSessions[i] = *sessionMap[key]
+	}
+
+	sort.Slice(allSessions, func(i, j int) bool {
+		if allSessions[i].Username != allSessions[j].Username {
+			return allSessions[i].Username < allSessions[j].Username
+		}
+		return allSessions[i].IP < allSessions[j].IP
+	})
 
 	data := struct {
 		Config            models.Config
