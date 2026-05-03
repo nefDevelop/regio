@@ -201,6 +201,17 @@
         width: 10px;
         height: 10px;
       }
+      .custom-dropdown-item {
+        padding: 10px 16px;
+        color: #e2e8f0;
+        cursor: pointer;
+        font-size: 13px;
+        transition: background 0.2s;
+      }
+      .custom-dropdown-item:hover {
+        background: rgba(99, 102, 241, 0.15);
+        color: #818cf8;
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -307,19 +318,23 @@
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
           <input type="hidden" name="accion" value="add_service" />
 
-          <div class="input-group">
+          <div class="input-group" style="position: relative;">
             <label>Hostname Público</label>
-            <input type="text" name="host" list="domain-suggestions" placeholder="nas.tudominio.com" required />
+            <input type="text" name="host" placeholder="nas.tudominio.com" required autocomplete="off" />
+            <div id="host-suggestions-dropdown" class="custom-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);"></div>
           </div>
 
           <div class="input-group">
             <label>Destino Local</label>
-            <div style="display: flex; gap: 4px;">
+            <div style="display: flex; gap: 4px; position: relative;">
               <select id="target-scheme" style="width: 85px; height: 44px; border-radius: 12px; background: rgba(0, 0, 0, 0.4); color: var(--text); border: 1px solid rgba(255, 255, 255, 0.08); padding: 0 8px; font-size: 14px; cursor: pointer; outline: none; transition: all 0.2s;">
                 <option value="http://" selected>http://</option>
                 <option value="https://">https://</option>
               </select>
-              <input type="text" id="target-address" list="target-suggestions" placeholder="10.0.0.5:80" style="flex: 1; min-width: 0;" required />
+              <div style="flex: 1; min-width: 0; position: relative;">
+                <input type="text" id="target-address" placeholder="10.0.0.5:80" style="width: 100%;" required autocomplete="off" />
+                <div id="target-suggestions-dropdown" class="custom-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);"></div>
+              </div>
             </div>
             <input type="hidden" name="target" id="final-target-input" />
           </div>
@@ -916,6 +931,21 @@
         );
       }
 
+      document.addEventListener('submit', function(e) {
+        var actionInput = e.target.querySelector('input[name="accion"]');
+        var action = actionInput ? actionInput.value : '';
+        var submitter = e.submitter;
+        var isDelete = action.startsWith('delete_') || action.startsWith('revoke_') || action.startsWith('disable_') || action.startsWith('unban_');
+        if (!isDelete && submitter && submitter.classList.contains('btn-del')) {
+          isDelete = true;
+        }
+        if (isDelete) {
+          if (!confirm('¿Estás seguro de que deseas realizar esta acción?')) {
+            e.preventDefault();
+          }
+        }
+      });
+
       document.addEventListener("DOMContentLoaded", function () {
         // --- Form target synchronization ---
         var form = document.querySelector('.bridge-form-grid');
@@ -927,10 +957,12 @@
           });
         }
 
-        // --- Dynamic host suggestions ---
+        // --- Premium host and target suggestions dropdown ---
         var hostInput = document.querySelector('input[name="host"]');
+        var hostDropdown = document.getElementById('host-suggestions-dropdown');
         var domainDatalist = document.getElementById('domain-suggestions');
-        if (hostInput && domainDatalist) {
+
+        if (hostInput && hostDropdown && domainDatalist) {
           var originalSuggestions = Array.from(domainDatalist.options).map(function(o) { return o.value; });
           var baseDomains = originalSuggestions.filter(function(v) {
             if (v.startsWith('.')) return false;
@@ -942,39 +974,101 @@
           });
           baseDomains = Array.from(new Set(baseDomains));
 
-          var updateSuggestions = function() {
+          function renderDropdown() {
             var val = hostInput.value;
-            domainDatalist.innerHTML = '';
+            var allOptions = [];
             originalSuggestions.forEach(function(s) {
-              var opt = document.createElement('option');
-              opt.value = s;
-              domainDatalist.appendChild(opt);
+              if (allOptions.indexOf(s) === -1) allOptions.push(s);
             });
+
             if (val && !val.includes('.')) {
               baseDomains.forEach(function(d) {
                 var combined = val + '.' + d;
-                if (originalSuggestions.indexOf(combined) === -1) {
-                  var opt = document.createElement('option');
-                  opt.value = combined;
-                  domainDatalist.appendChild(opt);
-                }
+                if (allOptions.indexOf(combined) === -1) allOptions.push(combined);
               });
             } else if (val && val.includes('.')) {
               var basePart = val.substring(0, val.lastIndexOf('.') + 1);
               baseDomains.forEach(function(d) {
                 var combined = basePart + d;
-                if (originalSuggestions.indexOf(combined) === -1) {
-                  var opt = document.createElement('option');
-                  opt.value = combined;
-                  domainDatalist.appendChild(opt);
-                }
+                if (allOptions.indexOf(combined) === -1) allOptions.push(combined);
               });
             }
-          };
 
-          hostInput.addEventListener('input', updateSuggestions);
-          hostInput.addEventListener('focus', updateSuggestions);
-          hostInput.addEventListener('click', updateSuggestions);
+            var matches = allOptions.filter(function(opt) {
+              return opt.toLowerCase().includes(val.toLowerCase());
+            });
+
+            hostDropdown.innerHTML = '';
+            if (matches.length > 0) {
+              matches.forEach(function(m) {
+                var item = document.createElement('div');
+                item.className = 'custom-dropdown-item';
+                item.innerText = m;
+                item.style.padding = '10px 16px';
+                item.style.cursor = 'pointer';
+                item.addEventListener('click', function() {
+                  hostInput.value = m;
+                  hostDropdown.style.display = 'none';
+                });
+                hostDropdown.appendChild(item);
+              });
+              hostDropdown.style.display = 'block';
+            } else {
+              hostDropdown.style.display = 'none';
+            }
+          }
+
+          hostInput.addEventListener('input', renderDropdown);
+          hostInput.addEventListener('focus', renderDropdown);
+          
+          document.addEventListener('click', function(e) {
+            if (e.target !== hostInput && !hostDropdown.contains(e.target)) {
+              hostDropdown.style.display = 'none';
+            }
+          });
+        }
+
+        var targetInput = document.getElementById('target-address');
+        var targetDropdown = document.getElementById('target-suggestions-dropdown');
+        var targetDatalist = document.getElementById('target-suggestions');
+
+        if (targetInput && targetDropdown && targetDatalist) {
+          var originalTargetSuggestions = Array.from(targetDatalist.options).map(function(o) { return o.value; });
+
+          function renderTargetDropdown() {
+            var val = targetInput.value;
+            var matches = originalTargetSuggestions.filter(function(opt) {
+              return opt.toLowerCase().includes(val.toLowerCase());
+            });
+
+            targetDropdown.innerHTML = '';
+            if (matches.length > 0) {
+              matches.forEach(function(m) {
+                var item = document.createElement('div');
+                item.className = 'custom-dropdown-item';
+                item.innerText = m;
+                item.style.padding = '10px 16px';
+                item.style.cursor = 'pointer';
+                item.addEventListener('click', function() {
+                  targetInput.value = m;
+                  targetDropdown.style.display = 'none';
+                });
+                targetDropdown.appendChild(item);
+              });
+              targetDropdown.style.display = 'block';
+            } else {
+              targetDropdown.style.display = 'none';
+            }
+          }
+
+          targetInput.addEventListener('input', renderTargetDropdown);
+          targetInput.addEventListener('focus', renderTargetDropdown);
+          
+          document.addEventListener('click', function(e) {
+            if (e.target !== targetInput && !targetDropdown.contains(e.target)) {
+              targetDropdown.style.display = 'none';
+            }
+          });
         }
 
 

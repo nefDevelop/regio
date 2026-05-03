@@ -503,5 +503,21 @@
       </script>
       {{end}}
     </div>
+    <script>
+      document.addEventListener('submit', function(e) {
+        var actionInput = e.target.querySelector('input[name="accion"]');
+        var action = actionInput ? actionInput.value : '';
+        var submitter = e.submitter;
+        var isDelete = action.startsWith('delete_') || action.startsWith('revoke_') || action.startsWith('disable_') || action.startsWith('unban_');
+        if (!isDelete && submitter && submitter.classList.contains('btn-del')) {
+          isDelete = true;
+        }
+        if (isDelete) {
+          if (!confirm('¿Estás seguro de que deseas realizar esta acción?')) {
+            e.preventDefault();
+          }
+        }
+      });
+    </script>
   </body>
 </html>
