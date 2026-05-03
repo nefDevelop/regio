@@ -582,6 +582,17 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	Mu.Unlock()
 
+	if r.Host != "" {
+		hostSuggestions[r.Host] = true
+		parts := strings.Split(r.Host, ".")
+		if len(parts) >= 2 {
+			baseDomain := strings.Join(parts[len(parts)-2:], ".")
+			hostSuggestions["."+baseDomain] = true
+			hostSuggestions[baseDomain] = true
+		}
+	}
+
+
 
 	var hosts []string
 	for h := range hostSuggestions {

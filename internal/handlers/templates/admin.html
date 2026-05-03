@@ -633,12 +633,15 @@
 
     <datalist id="domain-suggestions">
       {{range .HostSuggestions}}
-      <option value="{{.}}">{{end}}</option>
+      <option value="{{.}}"></option>
+      {{end}}
     </datalist>
     <datalist id="target-suggestions">
       {{range .TargetSuggestions}}
-      <option value="{{.}}">{{end}}</option>
+      <option value="{{.}}"></option>
+      {{end}}
     </datalist>
+
 
     <script>
       var currentCspHost = "";
@@ -939,16 +942,25 @@
           });
           baseDomains = Array.from(new Set(baseDomains));
 
-          hostInput.addEventListener('input', function() {
-            var val = this.value;
+          var updateSuggestions = function() {
+            var val = hostInput.value;
             domainDatalist.innerHTML = '';
             originalSuggestions.forEach(function(s) {
               var opt = document.createElement('option');
               opt.value = s;
               domainDatalist.appendChild(opt);
             });
-            if (val && val.indexOf('.') !== -1) {
-              var basePart = val.substring(0, val.indexOf('.') + 1);
+            if (val && !val.includes('.')) {
+              baseDomains.forEach(function(d) {
+                var combined = val + '.' + d;
+                if (originalSuggestions.indexOf(combined) === -1) {
+                  var opt = document.createElement('option');
+                  opt.value = combined;
+                  domainDatalist.appendChild(opt);
+                }
+              });
+            } else if (val && val.includes('.')) {
+              var basePart = val.substring(0, val.lastIndexOf('.') + 1);
               baseDomains.forEach(function(d) {
                 var combined = basePart + d;
                 if (originalSuggestions.indexOf(combined) === -1) {
@@ -958,8 +970,13 @@
                 }
               });
             }
-          });
+          };
+
+          hostInput.addEventListener('input', updateSuggestions);
+          hostInput.addEventListener('focus', updateSuggestions);
+          hostInput.addEventListener('click', updateSuggestions);
         }
+
 
         var ipRegex = /([a-zA-Z]+:\/\/)?\b((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?)\b/g;
         var eventEntries = document.querySelectorAll(".event-log-entry");
