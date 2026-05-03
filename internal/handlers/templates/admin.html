@@ -314,8 +314,16 @@
 
           <div class="input-group">
             <label>Destino Local</label>
-            <input type="text" name="target" list="target-suggestions" placeholder="http://10.0.0.5:80" required />
+            <div style="display: flex; gap: 4px;">
+              <select id="target-scheme" style="width: 85px; height: 44px; border-radius: 12px; background: rgba(0, 0, 0, 0.4); color: var(--text); border: 1px solid rgba(255, 255, 255, 0.08); padding: 0 8px; font-size: 14px; cursor: pointer; outline: none; transition: all 0.2s;">
+                <option value="http://" selected>http://</option>
+                <option value="https://">https://</option>
+              </select>
+              <input type="text" id="target-address" list="target-suggestions" placeholder="10.0.0.5:80" style="flex: 1; min-width: 0;" required />
+            </div>
+            <input type="hidden" name="target" id="final-target-input" />
           </div>
+
 
           <div class="input-group" style="height: 100%; display: flex; flex-direction: column; justify-content: flex-end;">
             <div
@@ -906,6 +914,53 @@
       }
 
       document.addEventListener("DOMContentLoaded", function () {
+        // --- Form target synchronization ---
+        var form = document.querySelector('.bridge-form-grid');
+        if (form) {
+          form.addEventListener('submit', function(e) {
+            var scheme = document.getElementById('target-scheme').value;
+            var address = document.getElementById('target-address').value;
+            document.getElementById('final-target-input').value = scheme + address;
+          });
+        }
+
+        // --- Dynamic host suggestions ---
+        var hostInput = document.querySelector('input[name="host"]');
+        var domainDatalist = document.getElementById('domain-suggestions');
+        if (hostInput && domainDatalist) {
+          var originalSuggestions = Array.from(domainDatalist.options).map(function(o) { return o.value; });
+          var baseDomains = originalSuggestions.filter(function(v) {
+            if (v.startsWith('.')) return false;
+            var parts = v.split('.');
+            return parts.length >= 2;
+          }).map(function(v) {
+            var parts = v.split('.');
+            return parts.slice(-2).join('.');
+          });
+          baseDomains = Array.from(new Set(baseDomains));
+
+          hostInput.addEventListener('input', function() {
+            var val = this.value;
+            domainDatalist.innerHTML = '';
+            originalSuggestions.forEach(function(s) {
+              var opt = document.createElement('option');
+              opt.value = s;
+              domainDatalist.appendChild(opt);
+            });
+            if (val && val.indexOf('.') !== -1) {
+              var basePart = val.substring(0, val.indexOf('.') + 1);
+              baseDomains.forEach(function(d) {
+                var combined = basePart + d;
+                if (originalSuggestions.indexOf(combined) === -1) {
+                  var opt = document.createElement('option');
+                  opt.value = combined;
+                  domainDatalist.appendChild(opt);
+                }
+              });
+            }
+          });
+        }
+
         var ipRegex = /([a-zA-Z]+:\/\/)?\b((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?:\/\d{1,2})?)\b/g;
         var eventEntries = document.querySelectorAll(".event-log-entry");
 
@@ -926,3 +981,4 @@
     </script>
   </body>
 </html>
+

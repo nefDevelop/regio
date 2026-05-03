@@ -553,11 +553,20 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	Mu.Lock()
 	for host, target := range Config.Servicios {
 		hostSuggestions[host] = true
-		targetSuggestions[target] = true
+		
+		targetClean := target
+		if strings.HasPrefix(target, "http://") {
+			targetClean = strings.TrimPrefix(target, "http://")
+		} else if strings.HasPrefix(target, "https://") {
+			targetClean = strings.TrimPrefix(target, "https://")
+		}
+		targetSuggestions[targetClean] = true
+
 		parts := strings.Split(host, ".")
 		if len(parts) >= 2 {
 			baseDomain := strings.Join(parts[len(parts)-2:], ".")
 			hostSuggestions["."+baseDomain] = true
+			hostSuggestions[baseDomain] = true
 		}
 		if strings.HasPrefix(target, "http") {
 			urlParts := strings.Split(target, "/")
@@ -565,13 +574,14 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				domainPart := urlParts[2]
 				ipParts := strings.Split(domainPart, ".")
 				if len(ipParts) >= 3 {
-					targetSuggestions["http://"+strings.Join(ipParts[:3], ".")+".:"] = true
+					targetSuggestions[strings.Join(ipParts[:3], ".")+".:"] = true
 				}
-				targetSuggestions["http://"+domainPart] = true
+				targetSuggestions[domainPart] = true
 			}
 		}
 	}
 	Mu.Unlock()
+
 
 	var hosts []string
 	for h := range hostSuggestions {
