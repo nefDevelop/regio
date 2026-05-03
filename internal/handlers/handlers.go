@@ -1015,6 +1015,17 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 				resp.Header.Set("Content-Type", ct)
 			}
 		}
+		if loc := resp.Header.Get("Location"); loc != "" {
+			if originalHost := resp.Request.Header.Get("X-Forwarded-Host"); originalHost != "" {
+				if strings.Contains(loc, remote.Host) {
+					loc = strings.Replace(loc, remote.Host, originalHost, 1)
+				}
+				if strings.HasPrefix(loc, "http://"+originalHost) {
+					loc = strings.Replace(loc, "http://"+originalHost, "https://"+originalHost, 1)
+				}
+				resp.Header.Set("Location", loc)
+			}
+		}
 		return nil
 	}
 	r.URL.Host, r.URL.Scheme = remote.Host, remote.Scheme
@@ -1336,6 +1347,17 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 			ext := filepath.Ext(resp.Request.URL.Path)
 			if ct := mime.TypeByExtension(ext); ct != "" {
 				resp.Header.Set("Content-Type", ct)
+			}
+		}
+		if loc := resp.Header.Get("Location"); loc != "" {
+			if originalHost := resp.Request.Header.Get("X-Forwarded-Host"); originalHost != "" {
+				if strings.Contains(loc, remote.Host) {
+					loc = strings.Replace(loc, remote.Host, originalHost, 1)
+				}
+				if strings.HasPrefix(loc, "http://"+originalHost) {
+					loc = strings.Replace(loc, "http://"+originalHost, "https://"+originalHost, 1)
+				}
+				resp.Header.Set("Location", loc)
 			}
 		}
 		return nil
