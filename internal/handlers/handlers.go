@@ -1312,9 +1312,10 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !validSession {
 		if !strings.Contains(r.Header.Get("Accept"), "text/html") {
-			sw.Header().Set("WWW-Authenticate", `Basic realm="reGIO protegido"`)
+			// Evitar el desafío Basic Auth en navegadores para peticiones AJAX/assets
+			// sw.Header().Set("WWW-Authenticate", `Basic realm="reGIO protegido"`)
 			sw.status = http.StatusUnauthorized
-			http.Error(sw, "No autorizado", http.StatusUnauthorized)
+			http.Error(sw, "Sesión expirada o no autorizada. Refresque la página.", http.StatusUnauthorized)
 			return
 		}
 		sw.status = http.StatusSeeOther
