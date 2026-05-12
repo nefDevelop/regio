@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"regexp"
 
 	"regio/internal/models"
 
@@ -287,10 +288,17 @@ const (
 	PrefixREGIO = ColorPurple + "[reGIO]" + ColorReset
 )
 
+func stripANSI(str string) string {
+	const ansi = "[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]"
+	re := regexp.MustCompile(ansi)
+	return re.ReplaceAllString(str, "")
+}
+
 func LogEvent(message string, performer string) {
+	cleanMessage := stripANSI(message)
 	if DB != nil {
-		DB.Exec("INSERT INTO events (message, performer) VALUES (?, ?)", message, performer)
+		DB.Exec("INSERT INTO events (message, performer) VALUES (?, ?)", cleanMessage, performer)
 	}
-	log.Printf("[%s] %s", performer, message)
+	log.Printf("[%s] %s", performer, cleanMessage)
 }
 

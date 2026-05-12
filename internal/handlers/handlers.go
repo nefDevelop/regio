@@ -1139,7 +1139,7 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 func MainHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s INCOMING: %s %s (Host: %s, Remote: %s)", db.PrefixIN, r.Method, r.URL.Path, r.Host, r.RemoteAddr)
 
-	if r.URL.Path == "/api/csp-report" {
+	if strings.HasPrefix(r.URL.Path, "/api/csp-report") {
 		HandleCSPReport(w, r)
 		return
 	}
@@ -1188,6 +1188,16 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		sw.Header().Set("Content-Security-Policy", customCSP)
 	} else {
 		sw.Header().Set("Content-Security-Policy", DefaultCSP)
+	}
+
+	// Añadir soporte para report-to moderno
+	sw.Header().Set("Reporting-Endpoints", `main-endpoint="/api/csp-report"`)
+	if !strings.Contains(sw.Header().Get("Content-Security-Policy"), "report-to") {
+		sw.Header().Set("Content-Security-Policy", sw.Header().Get("Content-Security-Policy")+"; report-to main-endpoint")
+	}
+
+	if !strings.HasPrefix(r.URL.Path, "/static/") {
+		log.Printf("%s [CSP DEBUG] Host: %s, CSP: %s", db.PrefixINFO, r.Host, sw.Header().Get("Content-Security-Policy"))
 	}
 
 	if err := security.SecurityEngine(ip, r); err != nil {
