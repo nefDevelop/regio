@@ -212,6 +212,52 @@
         background: rgba(99, 102, 241, 0.15);
         color: #818cf8;
       }
+      @media (max-width: 768px) {
+        .header {
+          flex-direction: column;
+          gap: 16px;
+          align-items: center;
+          text-align: center;
+        }
+        .header h1 {
+          font-size: 20px !important;
+        }
+        .bridge-form-grid {
+          grid-template-columns: 1fr !important;
+          gap: 20px !important;
+        }
+        .input-group {
+          width: 100%;
+        }
+        .input-group label {
+          margin-bottom: 6px;
+        }
+        .section {
+          padding: 24px 16px !important;
+          margin-top: 24px !important;
+          border-radius: 16px !important;
+        }
+        .add-bridge-card {
+          padding: 24px 16px !important;
+          border-radius: 16px !important;
+        }
+        .public-check {
+          height: 48px !important;
+        }
+        .input-group[style*="height: 100%"] {
+          height: auto !important;
+          margin-top: 8px;
+        }
+        table th:nth-child(3), table td:nth-child(3) {
+          display: none; /* Hide security/CSP in small screens if it doesn't fit */
+        }
+        /* Make table scroll hint more obvious */
+        .section div[style*="overflow-x: auto"] {
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          background: rgba(0, 0, 0, 0.1);
+        }
+      }
     </style>
   </head>
   <body class="admin-view">
@@ -265,7 +311,13 @@
                     >PÚBLICO</span
                   >{{end}}
                 </div>
-                <input type="text" form="form-{{.Host}}" name="host" value="{{.Host}}" class="edit-mode" style="display: none" />
+                <div class="edit-mode" style="display: none">
+                  <input type="text" form="form-{{.Host}}" name="host" value="{{.Host}}" />
+                  <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); margin-top: 8px; cursor: pointer;">
+                    <input type="checkbox" form="form-{{.Host}}" name="public" class="custom-checkbox" {{if index $.Config.Publicos .Host}}checked{{end}} />
+                    <span>PÚBLICO</span>
+                  </label>
+                </div>
               </td>
               <td>
                 <div class="view-mode" style="color: var(--text-muted); font-size: 13px">{{.Target}}</div>
@@ -933,39 +985,27 @@
       function toggleEdit(h) {
         var r = document.getElementById("row-" + h);
         var v = r.querySelectorAll(".view-mode");
+        var e = r.querySelectorAll(".edit-mode");
         var b = r.querySelector(".btn-edit");
-        var e = r.querySelectorAll("input.edit-mode");
 
-        if (b.innerText === "Editar") {
+        if (b.style.display !== "none") {
           for (var i = 0; i < v.length; i++) v[i].style.display = "none";
-          for (var i = 0; i < e.length; i++) e[i].style.display = "block";
-          var editDiv = r.querySelector("div.edit-mode");
-          if (editDiv) editDiv.style.display = "flex";
-          b.innerText = "Guardar";
+          for (var i = 0; i < e.length; i++) {
+            if (e[i].tagName === "DIV" || e[i].classList.contains("edit-mode-flex")) {
+                e[i].style.display = "flex";
+            } else {
+                e[i].style.display = "block";
+            }
+          }
         } else {
-          var nh = e[0].value;
-          var nt = e[1].value;
-          // Obtener CSP del input oculto, no de los inputs editables (ya que no hay uno visible)
-          var hiddenCsp = document.getElementById("csp-hidden-" + h);
-          var nc = hiddenCsp ? hiddenCsp.value : "";
-          
-          var f = document.createElement("form");
-          f.method = "POST";
-          var a = function(n, v) {
-            var i = document.createElement("input");
-            i.type = "hidden";
-            i.name = n;
-            i.value = v;
-            f.appendChild(i);
-          };
-          a("accion", "update_service");
-          a("old_host", h);
-          a("host", nh);
-          a("target", nt);
-          a("csp", nc);
-          a("csrf_token", "{{.CSRFToken}}");
-          document.body.appendChild(f);
-          f.submit();
+          for (var i = 0; i < v.length; i++) {
+            if (v[i].tagName === "DIV" || v[i].classList.contains("view-mode-flex")) {
+                v[i].style.display = "flex";
+            } else {
+                v[i].style.display = "block";
+            }
+          }
+          for (var i = 0; i < e.length; i++) e[i].style.display = "none";
         }
       }
 

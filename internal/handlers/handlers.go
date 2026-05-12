@@ -427,13 +427,20 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				if Config.Servicios == nil {
 					Config.Servicios = make(map[string]string)
 				}
+				if Config.Publicos == nil {
+					Config.Publicos = make(map[string]bool)
+				}
+				if Config.BypassHeaders == nil {
+					Config.BypassHeaders = make(map[string]string)
+				}
 				if Config.CSPs == nil {
 					Config.CSPs = make(map[string]string)
 				}
 				delete(Config.Servicios, host)
 				Config.Servicios[newHost] = target
-				// Mantener sincronizado el estado de "Público" y "Bypass"
-				isPublic := Config.Publicos[host]
+				
+				// Actualizar estado de "Público" desde el formulario
+				isPublic := r.FormValue("public") == "on"
 				delete(Config.Publicos, host)
 				Config.Publicos[newHost] = isPublic
 
@@ -447,7 +454,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 				db.SaveConfig(Config)
 				UpdateAllowedNetworksFromConfig()
 				Mu.Unlock()
-				db.LogEvent(fmt.Sprintf("%s Puente actualizado: %s -> %s", db.PrefixREGIO, newHost, target), user.Username)
+				db.LogEvent(fmt.Sprintf("%s Puente actualizado: %s -> %s (Público: %v)", db.PrefixREGIO, newHost, target, isPublic), user.Username)
 			}
 		case "delete_service":
 			host := r.FormValue("host")
