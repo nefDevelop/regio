@@ -1030,6 +1030,16 @@ func ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = proxyTransport
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Eliminar cabeceras de seguridad del backend para que reGIO tenga el control total
+		resp.Header.Del("Content-Security-Policy")
+		resp.Header.Del("Content-Security-Policy-Report-Only")
+		resp.Header.Del("X-Content-Security-Policy")
+		resp.Header.Del("X-WebKit-CSP")
+		resp.Header.Del("Strict-Transport-Security")
+		resp.Header.Del("X-Frame-Options")
+		resp.Header.Del("X-Content-Type-Options")
+		resp.Header.Del("X-XSS-Protection")
+
 		if resp.Header.Get("Content-Type") == "" {
 			ext := filepath.Ext(resp.Request.URL.Path)
 			if ct := mime.TypeByExtension(ext); ct != "" {
@@ -1108,6 +1118,11 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Normalizar host (quitar puerto si existe) para coincidir con Config
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+
 		blocked := report.BlockedURI
 		if blocked == "" {
 			blocked = "inline/eval/other"
@@ -1115,7 +1130,7 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 		db.SaveCSPReport(host, blocked, report.ViolatedDirective, report.OriginalPolicy)
 		db.LogEvent(fmt.Sprintf("%s Bloqueo CSP en %s: %s (Directiva: %s)", db.PrefixWARN, host, blocked, report.ViolatedDirective), "Sistema")
-		log.Printf("%s Reporte CSP recibido para %s: %s violó %s", db.PrefixINFO, host, blocked, report.ViolatedDirective)
+		log.Printf("%s Reporte CSP guardado para %s: %s violó %s", db.PrefixOK, host, blocked, report.ViolatedDirective)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -1370,6 +1385,16 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = proxyTransport // Usar nuestro transporte con timeouts
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Eliminar cabeceras de seguridad del backend para que reGIO tenga el control total
+		resp.Header.Del("Content-Security-Policy")
+		resp.Header.Del("Content-Security-Policy-Report-Only")
+		resp.Header.Del("X-Content-Security-Policy")
+		resp.Header.Del("X-WebKit-CSP")
+		resp.Header.Del("Strict-Transport-Security")
+		resp.Header.Del("X-Frame-Options")
+		resp.Header.Del("X-Content-Type-Options")
+		resp.Header.Del("X-XSS-Protection")
+
 		if resp.Header.Get("Content-Type") == "" {
 			ext := filepath.Ext(resp.Request.URL.Path)
 			if ct := mime.TypeByExtension(ext); ct != "" {
