@@ -505,6 +505,50 @@
       </div>
     </div>
 
+      </div>
+    </div>
+
+    {{if .CSPReports}}
+    <div class="section">
+      <h2 style="display: flex; align-items: center; gap: 12px; font-size: 18px; margin-bottom: 24px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        Recursos Bloqueados (CSP)
+      </h2>
+      <div style="width: 100%; overflow-x: auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Host</th>
+              <th>Recurso Bloqueado</th>
+              <th>Directiva</th>
+              <th>Fecha</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .CSPReports}}
+            <tr>
+              <td><strong style="color: #818cf8">{{.Host}}</strong></td>
+              <td style="word-break: break-all; font-family: monospace; font-size: 11px; max-width: 300px;">{{.BlockedURI}}</td>
+              <td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 10px;">{{.ViolatedDirective}}</span></td>
+              <td style="color: var(--text-dim); font-size: 11px;">{{.CreatedAt}}</td>
+              <td>
+                {{if ne .BlockedURI "inline/eval/other"}}
+                <button class="btn-success" style="height: 32px; padding: 0 12px; font-size: 11px;" onclick="quickAllow('{{.Host}}', '{{.BlockedURI}}')">Permitir</button>
+                {{else}}
+                <button class="btn-edit" style="height: 32px; padding: 0 12px; font-size: 11px;" onclick="openServiceModal('{{.Host}}', '')">Revisar</button>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {{end}}
+
     <div class="section">
       <h2>Registro de Eventos</h2>
       <div
@@ -605,10 +649,11 @@
                   <tr>
                     <th>Recurso Bloqueado</th>
                     <th>Directiva</th>
+                    <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody id="modal-csp-body">
-                  <tr><td colspan="2" style="text-align: center; color: #71717a">Cargando...</td></tr>
+                  <tr><td colspan="3" style="text-align: center; color: #71717a">Cargando...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -700,7 +745,10 @@
 
         // Hacer petición API
         fetch('/admin?action=get_service_details&host=' + encodeURIComponent(host))
-          .then(r => r.json())
+          .then(r => {
+            if (!r.ok) return r.text().then(t => { throw new Error("Error " + r.status + ": " + t) });
+            return r.json();
+          })
           .then(data => {
             // Llenar Eventos
             var evContainer = document.getElementById("modal-events-log");
@@ -718,15 +766,22 @@
               });
             }
 
-            // Llenar Alertas CSP
             var cspBody = document.getElementById("modal-csp-body");
             if (!data.csp_reports || data.csp_reports.length === 0) {
-              cspBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #71717a">No hay alertas.</td></tr>';
+              cspBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #71717a">No hay alertas.</td></tr>';
             } else {
               cspBody.innerHTML = '';
               data.csp_reports.forEach(function(r) {
                 var tr = document.createElement("tr");
-                tr.innerHTML = '<td style="word-break: break-all; max-width: 150px;" title="' + r.BlockedURI + '">' + r.BlockedURI + '</td><td>' + r.ViolatedDirective + '</td>';
+                var actionBtn = '';
+                if (r.BlockedURI !== "inline/eval/other") {
+                  actionBtn = '<button class="btn-success" style="height: 24px; padding: 0 8px; font-size: 10px;" onclick="quickAllow(\'' + host + '\', \'' + r.BlockedURI + '\')">Permitir</button>';
+                } else {
+                  actionBtn = '<span style="font-size: 9px; color: #71717a">Manual</span>';
+                }
+                tr.innerHTML = '<td style="word-break: break-all; max-width: 250px; font-family: monospace; font-size: 11px;" title="' + r.BlockedURI + '">' + r.BlockedURI + '</td>' +
+                               '<td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 9px;">' + r.ViolatedDirective + '</span></td>' +
+                               '<td>' + actionBtn + '</td>';
                 cspBody.appendChild(tr);
               });
             }

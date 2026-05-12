@@ -706,7 +706,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 		TargetSuggestions: targets,
 		HealthResults:     healthResults,
 		AllSessions:       allSessions,
-		CSPReports:        db.GetRecentCSPReports(20),
+		CSPReports:        db.GetRecentCSPReports(50),
 	}
 	Tmpls.ExecuteTemplate(w, "admin.html", data)
 }
