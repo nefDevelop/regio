@@ -165,17 +165,17 @@ func main() {
 	// 5. Manejar comandos CLI (si existen)
 	handleCLI()
 
-	// Rutina de limpieza en segundo plano (IPs bloqueadas y Rate Limiter)
+	// Rutina de limpieza en segundo plano (IPs bloqueadas, Rate Limiter y Sesiones)
 	go func() {
-		for {
-			time.Sleep(1 * time.Hour)
-			security.LimpiarBloqueosExpirados()
-			security.LimpiarRateLimiter()
-			security.LimpiarIntentosUsuario()
-			handlers.CleanupSessions()
-		}
-	}()
-	// Router Principal
+	        for {
+	                // Limpieza cada 10 minutos para mayor seguridad y liberación de recursos
+	                time.Sleep(10 * time.Minute)
+	                security.LimpiarBloqueosExpirados()
+	                security.LimpiarRateLimiter()
+	                security.LimpiarIntentosUsuario()
+	                handlers.CleanupSessions()
+	        }
+	}()	// Router Principal
 	tlsCert := os.Getenv("TLS_CERT")
 	tlsKey := os.Getenv("TLS_KEY")
 	forceHTTPS := os.Getenv("FORCE_HTTPS") == "true"

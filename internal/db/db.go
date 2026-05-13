@@ -6,13 +6,20 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sync"
+	"time"
 
 	"regio/internal/models"
 
 	_ "modernc.org/sqlite"
 )
 
-var DB *sql.DB
+var (
+	DB    *sql.DB
+	logMu sync.Mutex
+	// lastLogTime ayuda a evitar el flooding de logs idénticos en poco tiempo.
+	lastLogTime = make(map[string]time.Time)
+)
 
 func InitDB() {
 	var err error
@@ -311,8 +318,35 @@ func stripANSI(str string) string {
 
 func LogEvent(message string, performer string) {
 	cleanMessage := stripANSI(message)
+	
+	// Protección contra log-flooding: no registrar el mismo mensaje del mismo actor más de una vez por segundo.
+	logKey := performer + ":" + cleanMessage
+	logMu.Lock()
+	if last, ok := lastLogTime[logKey]; ok && time.Since(last) < 1*time.Second {
+		logMu.Unlock()
+		return
+	}
+	lastLogTime[logKey] = time.Now()
+	
+	// Limpieza periódica del mapa de tiempos para evitar memory leak
+	if len(lastLogTime) > 1000 {
+		for k, v := range lastLogTime {
+			if time.Since(v) > 1*time.Minute {
+				delete(lastLogTime, k)
+			}
+		}
+	}
+	logMu.Unlock()
+
 	if DB != nil {
 		DB.Exec("INSERT INTO events (message, performer) VALUES (?, ?)", cleanMessage, performer)
+		
+		// Auto-limpieza de la tabla de eventos para prevenir agotamiento de disco (Max 5000 eventos)
+		var count int
+		DB.QueryRow("SELECT COUNT(*) FROM events").Scan(&count)
+		if count > 5000 {
+			DB.Exec("DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY id ASC LIMIT 500)")
+		}
 	}
 	log.Printf("[%s] %s", performer, cleanMessage)
 }

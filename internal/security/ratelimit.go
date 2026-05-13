@@ -19,10 +19,18 @@ func CheckRateLimit(ip string) bool {
 
 	ahora := time.Now()
 
-	// Protección contra memory exhaustion
+	// Protección contra memory exhaustion: si está lleno, forzamos limpieza
 	if len(peticionesDB) > 10000 {
 		if _, ok := peticionesDB[ip]; !ok {
-			return false // Si es una IP nueva y estamos llenos, denegamos
+			// Intentar liberar espacio antes de denegar
+			rlMu.Unlock()
+			LimpiarRateLimiter()
+			rlMu.Lock()
+			
+			// Si sigue lleno tras la limpieza (ataque masivo real), denegamos
+			if len(peticionesDB) > 10000 {
+				return false
+			}
 		}
 	}
 
