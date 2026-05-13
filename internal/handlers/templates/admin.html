@@ -267,7 +267,10 @@
       </h1>
       <div style="display: flex; align-items: center; gap: 16px">
         <a href="/profile" class="btn-primary">Mi Perfil</a>
-        <a href="/logout" class="btn-del">SALIR</a>
+        <form action="/logout" method="POST" style="margin: 0">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <button type="submit" class="btn-del">SALIR</button>
+        </form>
       </div>
     </div>
 

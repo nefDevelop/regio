@@ -188,11 +188,12 @@ func main() {
 
 		// Servidor HTTPS
 		tlsServer := &http.Server{
-			Addr:         ":443",
-			Handler:      mainHandler,
-			ReadTimeout:  120 * time.Second,
-			WriteTimeout: 120 * time.Second,
-			IdleTimeout:  300 * time.Second,
+			Addr:              ":443",
+			Handler:           mainHandler,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
 		}
 
 		// Servidor HTTP: redirige a HTTPS
@@ -202,10 +203,11 @@ func main() {
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			})
 			httpServer := &http.Server{
-				Addr:         ":80",
-				Handler:      httpHandler,
-				ReadTimeout:  5 * time.Second,
-				WriteTimeout: 5 * time.Second,
+				Addr:              ":80",
+				Handler:           httpHandler,
+				ReadTimeout:       2 * time.Second,
+				WriteTimeout:      2 * time.Second,
+				ReadHeaderTimeout: 1 * time.Second,
 			}
 			log.Printf("%s Servidor HTTP en :80 redirigiendo a HTTPS", db.PrefixINFO)
 			if err := httpServer.ListenAndServe(); err != nil {
@@ -234,11 +236,12 @@ func main() {
 		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :80", db.PrefixREGIO, handlers.AdminDomain)
 
 		server := &http.Server{
-			Addr:         ":80",
-			Handler:      mainHandler,
-			ReadTimeout:  120 * time.Second,
-			WriteTimeout: 120 * time.Second,
-			IdleTimeout:  300 * time.Second,
+			Addr:              ":80",
+			Handler:           mainHandler,
+			ReadTimeout:       60 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 
 		if err := server.ListenAndServe(); err != nil {

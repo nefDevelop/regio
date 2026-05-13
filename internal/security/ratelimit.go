@@ -21,7 +21,9 @@ func CheckRateLimit(ip string) bool {
 
 	// Protección contra memory exhaustion
 	if len(peticionesDB) > 10000 {
-		peticionesDB = make(map[string][]time.Time)
+		if _, ok := peticionesDB[ip]; !ok {
+			return false // Si es una IP nueva y estamos llenos, denegamos
+		}
 	}
 
 	// 1. Limpiar peticiones antiguas fuera de la ventana

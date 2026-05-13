@@ -91,7 +91,9 @@ func Decrypt(cryptoText string) (string, error) {
 
 func HashPassword(password string) string {
 	salt := make([]byte, 16)
-	rand.Read(salt)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		log.Fatal("Error crítico de entropía:", err)
+	}
 	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
@@ -139,13 +141,17 @@ func GetTOTPCode(secret string) string {
 
 func GenerateTOTPSecret() string {
 	b := make([]byte, 10)
-	rand.Read(b)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		log.Fatal("Error crítico de entropía:", err)
+	}
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)
 }
 
 func GenerateSessionToken() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		log.Fatal("Error crítico de entropía:", err)
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 

@@ -19,7 +19,7 @@ func SecurityEngine(ip string, r *http.Request) error {
 	}
 
 	// 3. WAF (Futuro: Inyecciones SQL, XSS, etc.)
-	// if err := CheckWAF(r); err != nil { return err }
+	if err := CheckWAF(r); err != nil { return err }
 
 	return nil
 }

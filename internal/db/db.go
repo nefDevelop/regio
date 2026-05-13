@@ -16,7 +16,22 @@ var DB *sql.DB
 
 func InitDB() {
 	var err error
-	DB, err = sql.Open("sqlite", "./data/REGIO.db")
+	// Asegurar que el directorio data existe con permisos restrictivos
+	_ = os.MkdirAll("./data", 0700)
+
+	dbPath := "./data/REGIO.db"
+	// Si el archivo no existe, lo creamos vacío para establecer permisos antes de abrirlo
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		f, _ := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0600)
+		if f != nil {
+			f.Close()
+		}
+	} else {
+		// Si existe, forzar permisos 0600 por seguridad
+		_ = os.Chmod(dbPath, 0600)
+	}
+
+	DB, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatal("Error abriendo DB:", err)
 	}

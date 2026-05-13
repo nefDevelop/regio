@@ -76,22 +76,25 @@
       </h2>
       <div style="display: flex; align-items: center; gap: 12px">
         {{if .User.IsAdmin}}<a href="/admin" class="btn-nav btn-primary" style="border: none">Volver al Panel</a>{{end}}
-        <a href="/logout" class="btn-del" style="padding: 12px; border-radius: 12px" title="Cerrar Sesión">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </a>
+        <form action="/logout" method="POST" style="margin: 0">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <button type="submit" class="btn-del" style="padding: 12px; border-radius: 12px; height: 44px; width: 44px; display: flex; align-items: center; justify-content: center" title="Cerrar Sesión">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </form>
       </div>
     </div>
 
@@ -492,6 +495,7 @@
       </div>
 
       <script>
+        {{if .OtpUrl}}
         new QRCode(document.getElementById("qrcode"), {
           text: "{{.OtpUrl}}",
           width: 150,
@@ -500,6 +504,7 @@
           colorLight: "#ffffff",
           correctLevel: QRCode.CorrectLevel.M,
         });
+        {{end}}
       </script>
       {{end}}
     </div>
