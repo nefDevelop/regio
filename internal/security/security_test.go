@@ -2,6 +2,8 @@ package security
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"regio/internal/db"
 	"regio/internal/models"
 	"testing"
@@ -83,5 +85,63 @@ func TestFail2BanSubnet(t *testing.T) {
 	}
 	if motivo != "Rango de red bloqueado" {
 		t.Errorf("Motivo incorrecto: %s", motivo)
+	}
+}
+
+// TestWAFInputSizeLimit verifica que inputs > 4KB son bloqueados (M05).
+func TestWAFInputSizeLimit(t *testing.T) {
+	largeInput := string(make([]byte, 5000))
+	if !isMalicious(largeInput) {
+		t.Error("isMalicious debería bloquear input de 5000 bytes")
+	}
+
+	smallInput := string(make([]byte, 1000))
+	if isMalicious(smallInput) {
+		t.Error("isMalicious no debería bloquear input de 1000 bytes")
+	}
+}
+
+// TestWAFNewSQLiPatterns verifica las nuevas detecciones de SQLi (M05).
+func TestWAFNewSQLiPatterns(t *testing.T) {
+	tests := []struct {
+		input    string
+		blocked  bool
+		scenario string
+	}{
+		{"exec(xp_cmdshell)", true, "exec xp_cmdshell"},
+		{"WAITFOR DELAY '0:0:5'", true, "WAITFOR DELAY"},
+		{"SLEEP(5)", true, "SLEEP"},
+		{"pg_sleep(5)", true, "pg_sleep"},
+		{"0xdeadbeef", true, "Hex literal 0x"},
+		{"information_schema.tables", true, "information_schema"},
+		{"CHAR(65,66,67)", true, "CHAR function"},
+		{"NCHAR(65)", true, "NCHAR function"},
+		{"SELECT * FROM users", true, "SELECT FROM"},
+		{"DROP TABLE users", true, "DROP TABLE"},
+		{"UNION SELECT 1,2,3 --", true, "UNION SELECT"},
+		{"delete from users", true, "DELETE FROM"},
+		{"UPDATE users SET pass=1", true, "UPDATE SET"},
+
+		{"safe-normal-query", false, "Texto normal"},
+		{"hello world", false, "Texto inocuo"},
+		{"SELECTION", false, "SELECT como parte de palabra"},
+	}
+
+	AllowLoopback = true
+	defer func() { AllowLoopback = false }()
+
+	for _, tt := range tests {
+		t.Run(tt.scenario, func(t *testing.T) {
+			req := &http.Request{
+				URL: &url.URL{Path: "/test", RawQuery: url.QueryEscape(tt.input)},
+			}
+			err := CheckWAF(req)
+			if tt.blocked && err == nil {
+				t.Errorf("CheckWAF debería BLOQUEAR %q pero fue permitido", tt.input)
+			}
+			if !tt.blocked && err != nil {
+				t.Errorf("CheckWAF debería PERMITIR %q pero fue bloqueado: %v", tt.input, err)
+			}
+		})
 	}
 }

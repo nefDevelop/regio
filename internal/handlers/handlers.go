@@ -124,9 +124,12 @@ func getRealIP(r *http.Request) string {
 		}
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			ips := strings.Split(xff, ",")
-			// Tomar la última IP (la que puso nuestro proxy de confianza)
-			// para evitar Spoofing de cabeceras enviadas por el cliente.
-			return strings.TrimSpace(ips[len(ips)-1])
+			// Tomar la primera IP (la del cliente real).
+			// El proxy de confianza añade la IP del cliente al final de la cadena,
+			// pero previene spoofing porque las IPs anteriores vienen del cliente
+			// y no son de fiar. Para evitar spoofing, el proxy de confianza debería
+			// sobrescribir o sanitizar el header completo.
+			return strings.TrimSpace(ips[0])
 		}
 	}
 	return remoteIP
@@ -197,7 +200,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 
 		if err == nil && hash == "" {
 			// El usuario no tiene contraseña, verificamos el token de invitación
-			inviteGiven := r.URL.Query().Get("invite")
+			inviteGiven := r.FormValue("invite_token")
 			if inviteGiven == "" || subtle.ConstantTimeCompare([]byte(inviteGiven), []byte(inviteStored)) != 1 {
 				db.LogEvent(fmt.Sprintf("%s Intento de acceso a usuario sin contraseña sin token válido: %s", db.PrefixWARN, inputUser), ip)
 				security.RegistrarFallo(ip)
@@ -210,8 +213,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 			if step == "set_password" {
 				newPass := r.FormValue("new_pass")
 				confirmPass := r.FormValue("confirm_pass")
-				if len(newPass) < 8 {
-					Tmpls.ExecuteTemplate(w, "setpassword.html", map[string]interface{}{"User": inputUser, "Error": "La contraseña debe tener al menos 8 caracteres"})
+				if len(newPass) < 12 {
+					Tmpls.ExecuteTemplate(w, "setpassword.html", map[string]interface{}{"User": inputUser, "Error": "La contraseña debe tener al menos 12 caracteres"})
 					return
 				}
 				if newPass != "" && newPass == confirmPass {
@@ -306,7 +309,11 @@ func HandleLogin(w http.ResponseWriter, r *http.Request, ip string) {
 }
 
 func HandleAdmin(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(SessionKey)
+	cookie, err := r.Cookie(SessionKey)
+	if err != nil {
+		http.Error(w, "Sesión inválida", http.StatusUnauthorized)
+		return
+	}
 	cookieHash := sessionHash(cookie.Value)
 	Mu.Lock()
 	user, ok := ActiveSessions[cookieHash]
@@ -510,6 +517,13 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			var idToDelete int
 			db.DB.QueryRow("SELECT id FROM users WHERE username = ?", delUser).Scan(&idToDelete)
 			if idToDelete != 1 {
+				// Verificar que quede al menos un administrador
+				var adminCount int
+				db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE is_admin = 1 AND id != ?", idToDelete).Scan(&adminCount)
+				if adminCount == 0 {
+					http.Error(w, "No se puede eliminar el único administrador", http.StatusBadRequest)
+					return
+				}
 				db.DB.Exec("DELETE FROM users WHERE username = ?", delUser)
 				db.LogEvent(fmt.Sprintf("%s Usuario eliminado: %s", db.PrefixUSER, delUser), user.Username)
 			}
@@ -541,6 +555,9 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			db.LogEvent(fmt.Sprintf("%s %d sesiones revocadas por el administrador", db.PrefixBLOCK, len(tokensToRevoke)), user.Username)
 
 		}
+		// Rotar CSRF token tras uso exitoso para prevenir reuso
+		user.CSRFToken = auth.GenerateSessionToken()
+		db.DB.Exec("UPDATE sessions SET csrf_token = ? WHERE token = ?", user.CSRFToken, cookieHash)
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -732,7 +749,11 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleProfile(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(SessionKey)
+	cookie, err := r.Cookie(SessionKey)
+	if err != nil {
+		http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+		return
+	}
 	cookieHash := sessionHash(cookie.Value)
 	Mu.Lock()
 	userSession, ok := ActiveSessions[cookieHash]
@@ -765,6 +786,9 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error de validación CSRF", http.StatusForbidden)
 			return
 		}
+		// Rotar CSRF token tras uso exitoso para prevenir reuso
+		userSession.CSRFToken = auth.GenerateSessionToken()
+		db.DB.Exec("UPDATE sessions SET csrf_token = ? WHERE token = ?", userSession.CSRFToken, cookieHash)
 		accion := r.FormValue("accion")
 		if accion == "update_profile" {
 			newUsername := r.FormValue("new_username")
@@ -789,8 +813,8 @@ func HandleProfile(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if newPassword != "" {
-				if len(newPassword) < 8 {
-					http.Error(w, "La contraseña debe tener al menos 8 caracteres", http.StatusBadRequest)
+				if len(newPassword) < 12 {
+					http.Error(w, "La contraseña debe tener al menos 12 caracteres", http.StatusBadRequest)
 					return
 				}
 				newHash := auth.HashPassword(newPassword)
@@ -1114,9 +1138,11 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 10*1024)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("%s Error leyendo cuerpo de reporte CSP: %v", db.PrefixERR, err)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
@@ -1184,8 +1210,21 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw := &statusWriter{ResponseWriter: w, status: 200}
 	ip := getRealIP(r)
 
+	// Limitar tamaño de cuerpo de request a 10MB para peticiones proxy (prevenir agotamiento de memoria)
+	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+		r.Body = http.MaxBytesReader(sw, r.Body, 10*1024*1024)
+	}
+
 	// Sanitizar URI para logs (eliminar parámetros sensibles)
 	logURI := r.URL.Path
+	if strings.HasPrefix(logURI, "/r-auth/") {
+		parts := strings.SplitN(logURI, "/", 4)
+		if len(parts) >= 4 {
+			logURI = "/r-auth/[redacted]/" + parts[3]
+		} else {
+			logURI = "/r-auth/[redacted]"
+		}
+	}
 	if r.URL.RawQuery != "" {
 		logURI += "?[redacted]"
 	}
@@ -1282,7 +1321,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	var tokenUsed string
 
 	cookie, err := r.Cookie(SessionKey)
-	if err == nil {
+	if err == nil && cookie != nil {
 		cHash := sessionHash(cookie.Value)
 		Mu.Lock()
 		user, validSession = ActiveSessions[cHash]

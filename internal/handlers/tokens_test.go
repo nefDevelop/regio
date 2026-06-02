@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"regio/internal/db"
@@ -125,6 +126,26 @@ func TestMainHandlerTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRequestBodySizeLimit verifica que cuerpos de request grandes son rechazados (A03).
+func TestRequestBodySizeLimit(t *testing.T) {
+	db.InitDB()
+	AdminDomain = "admin.test"
+	NeedsSetup = false
+
+	t.Run("CSP report con body grande es rechazado", func(t *testing.T) {
+		largeBody := strings.Repeat("A", 20*1024) // 20KB
+		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(largeBody))
+		req.Host = "admin.test"
+		rr := httptest.NewRecorder()
+		HandleCSPReport(rr, req)
+
+		// El handler devuelve 400 si falla, o 204 si procesa. Con 20KB debería fallar.
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("CSP report con 20KB debería fallar, got %d", rr.Code)
+		}
+	})
 }
 
 func TestSecurityAttacks(t *testing.T) {
