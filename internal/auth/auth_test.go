@@ -175,7 +175,7 @@ func TestVerifyAppToken(t *testing.T) {
 	testUsername := "testuser"
 	db.DB.Exec("INSERT INTO users (id, username, is_admin) VALUES (?, ?, ?)", testUserID, testUsername, 1)
 
-	rawToken := "Wrtav3ig2FNmdwNlf5qJWVq1X7lLfu3Y4105oL5n3gQ"
+	rawToken := "Wrtav3ig2FNmdwNlf5qJWVq1X7lLfu3Y4105oL5n3gQ" // gitleaks:allow — test token, not a real credential
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := base64.StdEncoding.EncodeToString(hash[:])
 	db.DB.Exec("INSERT INTO app_tokens (user_id, name, token_hash) VALUES (?, ?, ?)", testUserID, "test-token", tokenHash)
