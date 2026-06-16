@@ -98,7 +98,7 @@ func Init() {
 	LoadSessions()
 }
 
-func isTrustedProxy(ip string) bool {
+func IsTrustedProxy(ip string) bool {
 	if len(TrustedProxies) == 0 {
 		return false
 	}
@@ -114,6 +114,10 @@ func isTrustedProxy(ip string) bool {
 		}
 	}
 	return false
+}
+
+func isTrustedProxy(ip string) bool {
+	return IsTrustedProxy(ip)
 }
 
 func getRealIP(r *http.Request) string {
@@ -1050,7 +1054,7 @@ func UpdateSessionActivity(token string) {
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 — Secure depende de TLS, HttpOnly y SameSite Strict están fijados
 		Name:     SessionKey,
 		Value:    token,
 		Path:     "/",
@@ -1138,6 +1142,13 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validar Content-Type (solo application/json o application/csp-report)
+	ct := r.Header.Get("Content-Type")
+	if ct != "application/json" && ct != "application/csp-report" && ct != "" {
+		http.Error(w, "Tipo de contenido no soportado", http.StatusUnsupportedMediaType)
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, 10*1024)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1146,8 +1157,6 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-
-	log.Printf("%s REPORTE CSP RECIBIDO (RAW): %s", db.PrefixINFO, string(body))
 
 	// Intentar parsear con el wrapper "csp-report"
 	var payload models.CSPReportPayload
@@ -1439,7 +1448,15 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 			delete(ActiveSessions, sessionHash(cookie.Value))
 		}
 		Mu.Unlock()
-		http.SetCookie(sw, &http.Cookie{Name: SessionKey, Value: "", Path: "/", MaxAge: -1})
+		http.SetCookie(sw, &http.Cookie{
+			Name:     SessionKey,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+			SameSite: http.SameSiteStrictMode,
+		})
 		sw.status = http.StatusSeeOther
 		http.Redirect(sw, r, "/REGIO-login", http.StatusSeeOther)
 		return

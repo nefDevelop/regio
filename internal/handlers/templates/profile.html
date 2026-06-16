@@ -268,7 +268,7 @@
               <td>
                 <code><a href="https://{{.Host}}" target="_blank" class="host-link">{{.Host}}</a></code>
               </td>
-              <td><code style="font-size: 0.9em; opacity: 0.7">{{.Token}}</code></td>
+              <td><code style="font-size: 0.9em; opacity: 0.5">{{slice .Token 0 12}}...</code></td>
               <td style="text-align: right">
                 <form method="POST" style="display: inline; margin: 0">
                   <input type="hidden" name="accion" value="delete_bypass_key" />

@@ -20,7 +20,25 @@ func CheckWAF(r *http.Request) error {
 	if isMalicious(r.URL.Path) {
 		return fmt.Errorf("petición bloqueada por WAF (ruta sospechosa)")
 	}
-	
+
+	// Detectar path traversal con doble encoding (ej: %252e%252e%252f)
+	if decodedPath, err := url.PathUnescape(r.URL.Path); err == nil && decodedPath != r.URL.Path {
+		if isMalicious(decodedPath) {
+			return fmt.Errorf("petición bloqueada por WAF (ruta sospechosa - doble encode)")
+		}
+	}
+	// Verificar RawPath si existe (path original sin decodificar)
+	if r.URL.RawPath != "" && r.URL.RawPath != r.URL.Path {
+		if isMalicious(r.URL.RawPath) {
+			return fmt.Errorf("petición bloqueada por WAF (ruta sospechosa)")
+		}
+		if decodedRawPath, err := url.PathUnescape(r.URL.RawPath); err == nil && decodedRawPath != r.URL.RawPath {
+			if isMalicious(decodedRawPath) {
+				return fmt.Errorf("petición bloqueada por WAF (ruta sospechosa - doble encode)")
+			}
+		}
+	}
+
 	if r.URL.RawQuery != "" {
 		decodedQuery, err := url.QueryUnescape(r.URL.RawQuery)
 		if err == nil {
@@ -28,11 +46,17 @@ func CheckWAF(r *http.Request) error {
 				return fmt.Errorf("petición bloqueada por WAF (parámetros sospechosos)")
 			}
 		}
+		// Doble decode en query params
+		if doubleDecoded, err := url.QueryUnescape(decodedQuery); err == nil && doubleDecoded != decodedQuery {
+			if isMalicious(doubleDecoded) {
+				return fmt.Errorf("petición bloqueada por WAF (parámetros sospechosos - doble encode)")
+			}
+		}
 	}
 
 	// 2. Filtrado básico de User-Agent (bloquear escáneres comunes)
 	ua := strings.ToLower(r.UserAgent())
-	if strings.Contains(ua, "nmap") || strings.Contains(ua, "sqlmap") || strings.Contains(ua, "nikto") || ((strings.Contains(ua, "curl") || strings.Contains(ua, "wget")) && !AllowLoopback) {
+	if strings.Contains(ua, "nmap") || strings.Contains(ua, "sqlmap") || strings.Contains(ua, "nikto") || strings.Contains(ua, "curl") || strings.Contains(ua, "wget") {
 		return fmt.Errorf("user-agent bloqueado por WAF")
 	}
 

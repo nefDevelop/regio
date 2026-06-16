@@ -155,6 +155,19 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla bypass_keys:", err)
 	}
+	DB.Exec("ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0")
+
+	// Tabla para rate limiting persistente
+	createRateLimitsTable := `
+	CREATE TABLE IF NOT EXISTS rate_limits (
+		ip TEXT NOT NULL,
+		timestamp DATETIME NOT NULL
+	);`
+	_, err = DB.Exec(createRateLimitsTable)
+	if err != nil {
+		log.Fatal("Error creando tabla rate_limits:", err)
+	}
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
 }
 
 func CheckNeedsSetup() bool {
@@ -275,13 +288,13 @@ func GetRecentCSPReports(limit int) []models.CSPReport {
 }
 
 // Funciones para Gestión de Bypass Keys
-func AddBypassKey(token, name, host string) error {
-	_, err := DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", token, name, host)
+func AddBypassKey(tokenHash, name, host string) error {
+	_, err := DB.Exec("INSERT INTO bypass_keys (token, name, host) VALUES (?, ?, ?)", tokenHash, name, host)
 	return err
 }
 
-func DeleteBypassKey(token string) error {
-	_, err := DB.Exec("DELETE FROM bypass_keys WHERE token = ?", token)
+func DeleteBypassKey(tokenHash string) error {
+	_, err := DB.Exec("DELETE FROM bypass_keys WHERE token = ?", tokenHash)
 	return err
 }
 

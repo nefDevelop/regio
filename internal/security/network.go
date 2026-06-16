@@ -11,8 +11,6 @@ import (
 )
 
 var (
-	// AllowLoopback permite conexiones a localhost (solo para entornos de prueba)
-	AllowLoopback bool
 	// AllowedNetworks contiene una lista de redes privadas permitidas
 	AllowedNetworks []net.IPNet
 )
@@ -93,7 +91,7 @@ func SafeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 
 	var targetIP net.IP
 	for _, ip := range ips {
-		if !AllowLoopback && IsPrivateIP(ip) {
+		if IsPrivateIP(ip) {
 			allowed := false
 			for _, subnet := range AllowedNetworks {
 				if subnet.Contains(ip) {
@@ -127,10 +125,10 @@ func IsValidTarget(target string) error {
 	host := u.Hostname()
 	ip := net.ParseIP(host)
 	if ip != nil {
-		if !AllowLoopback && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()) {
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
 			return fmt.Errorf("no se permite apuntar a la interfaz de loopback o IPs restringidas por seguridad")
 		}
-	} else if !AllowLoopback && host == "localhost" {
+	} else if host == "localhost" {
 		return fmt.Errorf("no se permite apuntar a la interfaz de loopback por seguridad")
 	}
 

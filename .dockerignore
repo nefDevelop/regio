@@ -1,0 +1,15 @@
+.git
+.gitignore
+*.md
+docs/
+.vscode/
+data/
+main
+REGIO
+Dockerfile
+docker-compose.yml
+Makefile
+CONTRIBUTING.md
+LICENSE
+roadmap.md
+SECURITY.md

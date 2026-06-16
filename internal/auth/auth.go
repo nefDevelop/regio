@@ -5,7 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 — required by TOTP (RFC 6238)
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
@@ -124,7 +124,7 @@ func GetTOTPCode(secret string) string {
 	}
 	epoch := time.Now().Unix() / 30
 	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(epoch))
+	binary.BigEndian.PutUint64(buf, uint64(epoch)) // #nosec G115 — epoch fits in uint64
 
 	h := hmac.New(sha1.New, key)
 	h.Write(buf)

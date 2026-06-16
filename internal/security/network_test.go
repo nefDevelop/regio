@@ -10,7 +10,6 @@ import (
 func TestSafeDialContextValidation(t *testing.T) {
 	// Limpiar antes de test
 	AllowedNetworks = nil
-	AllowLoopback = false
 	InitAllowedNetworks("192.168.30.0/24")
 
 	// Test whitelisted private IP

@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,9 +17,7 @@ import (
 func TestMainHandlerTokens(t *testing.T) {
 	// 1. Configuración de prueba
 	db.InitDB()
-	security.AllowLoopback = true
-	defer func() { security.AllowLoopback = false }()
-	
+
 	// Backend mock para recibir las peticiones del proxy
 	backendCalled := false
 	receivedPath := ""
@@ -28,6 +27,11 @@ func TestMainHandlerTokens(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer backend.Close()
+	u, _ := url.Parse(backend.URL)
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		security.AddAllowedIP(ip)
+	}
+	defer func() { security.AllowedNetworks = nil }()
 
 	Config.Servicios = map[string]string{
 		"test.local": backend.URL,
@@ -150,13 +154,16 @@ func TestRequestBodySizeLimit(t *testing.T) {
 
 func TestSecurityAttacks(t *testing.T) {
 	db.InitDB()
-	security.AllowLoopback = true
-	defer func() { security.AllowLoopback = false }()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer backend.Close()
+	u, _ := url.Parse(backend.URL)
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		security.AddAllowedIP(ip)
+	}
+	defer func() { security.AllowedNetworks = nil }()
 
 	Config.Servicios = map[string]string{"test.local": backend.URL}
 	AdminDomain = "admin.local"
@@ -222,10 +229,6 @@ func TestSecurityAttacks(t *testing.T) {
 	})
 
 	t.Run("SSRF Prevention - Adding Private IP", func(t *testing.T) {
-		// Restaurar AllowLoopback a false para esta subprueba específica
-		security.AllowLoopback = false
-		defer func() { security.AllowLoopback = true }()
-
 		err := security.IsValidTarget("http://192.168.1.1")
 		if err != nil {
 			t.Errorf("Private IP (RFC 1918) should be allowed, but got error: %v", err)

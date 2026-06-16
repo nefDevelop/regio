@@ -127,9 +127,6 @@ func TestWAFNewSQLiPatterns(t *testing.T) {
 		{"SELECTION", false, "SELECT como parte de palabra"},
 	}
 
-	AllowLoopback = true
-	defer func() { AllowLoopback = false }()
-
 	for _, tt := range tests {
 		t.Run(tt.scenario, func(t *testing.T) {
 			req := &http.Request{

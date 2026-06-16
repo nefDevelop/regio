@@ -7,8 +7,25 @@ on:
     branches: [ main ]
 
 jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
   test:
-    name: Run Tests
+    name: Tests + Race
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +38,24 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
-      - name: Test
+      - name: Test (with race detector)
         env:
           MASTER_KEY: test-master-key-32-bytes-length-!!!
-        run: go test -v ./...
+        run: go test -race -v ./...
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        run: gosec -no-fail -fmt text ./...

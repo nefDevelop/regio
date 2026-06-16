@@ -852,7 +852,8 @@
                 li.style.marginBottom = "8px";
                 li.style.paddingBottom = "8px";
                 li.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
-                li.innerHTML = '<div style="font-weight: bold; color: #e2e8f0;">' + k.Name + '</div><div style="font-family: monospace; font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 8px;">Token: ' + k.Token + ' <button onclick="copyToClipboard(\'' + k.Token + '\', this)" style="background: none; border: none; color: #4ade80; cursor: pointer; padding: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button></div>';
+                var tokenPreview = k.Token.length > 12 ? k.Token.substring(0, 12) + '...' : k.Token;
+                li.innerHTML = '<div style="font-weight: bold; color: #e2e8f0;">' + k.Name + '</div><div style="font-family: monospace; font-size: 11px; color: #94a3b8;">Hash: ' + tokenPreview + '</div>';
                 bpList.appendChild(li);
               });
             }

@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +17,8 @@ import (
 	"regio/internal/handlers"
 	"regio/internal/security"
 )
+
+var reValidHost = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-\.]*[a-zA-Z0-9])?(:\d+)?$`)
 
 func loadConfig() {
 	config, err := db.LoadConfig()
@@ -199,6 +203,10 @@ func main() {
 		// Servidor HTTP: redirige a HTTPS
 		go func() {
 			httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !reValidHost.MatchString(r.Host) {
+					http.Error(w, "Host inválido", http.StatusBadRequest)
+					return
+				}
 				target := "https://" + r.Host + r.URL.RequestURI()
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			})
@@ -222,9 +230,19 @@ func main() {
 		// Modo HTTP estándar (detrás de proxy/tunnel)
 		if forceHTTPS {
 			// Envolver handler para forzar redirección si llega HTTP directo
+			// Solo confiar en X-Forwarded-Proto si viene de un proxy de confianza (previene spoofing)
 			originalHandler := mainHandler
 			mainHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("X-Forwarded-Proto") != "https" && r.TLS == nil {
+				remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+				isHTTPS := r.TLS != nil
+				if !isHTTPS && handlers.IsTrustedProxy(remoteIP) {
+					isHTTPS = r.Header.Get("X-Forwarded-Proto") == "https"
+				}
+				if !isHTTPS {
+					if !reValidHost.MatchString(r.Host) {
+						http.Error(w, "Host inválido", http.StatusBadRequest)
+						return
+					}
 					target := "https://" + r.Host + r.URL.RequestURI()
 					http.Redirect(w, r, target, http.StatusMovedPermanently)
 					return

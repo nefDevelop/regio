@@ -518,3 +518,72 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Errorf("CSP no contiene default-src 'self': %s", csp)
 	}
 }
+
+// TestIsTrustedProxy verifica la detección de proxies de confianza con CIDR.
+func TestIsTrustedProxyCIDR(t *testing.T) {
+	saved := TrustedProxies
+	TrustedProxies = []string{"10.0.0.0/8", "192.168.1.1"}
+	defer func() { TrustedProxies = saved }()
+
+	tests := []struct {
+		ip       string
+		expected bool
+		desc     string
+	}{
+		{"10.0.0.1", true, "Dentro de 10.0.0.0/8"},
+		{"10.255.255.255", true, "Límite de 10.0.0.0/8"},
+		{"11.0.0.1", false, "Fuera de 10.0.0.0/8"},
+		{"192.168.1.1", true, "IP exacta en lista"},
+		{"192.168.1.2", false, "No listada"},
+		{"8.8.8.8", false, "IP pública no listada"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := IsTrustedProxy(tt.ip)
+			if result != tt.expected {
+				t.Errorf("IsTrustedProxy(%s) = %v, want %v", tt.ip, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestHandleCSPReportContentType verifica que CSP endpoint rechace Content-Type inválido.
+func TestHandleCSPReportContentType(t *testing.T) {
+	AdminDomain = "admin.test"
+
+	t.Run("Content-Type inválido es rechazado", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "text/plain")
+		req.Host = "admin.test"
+		rr := httptest.NewRecorder()
+		HandleCSPReport(rr, req)
+
+		if rr.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("Content-Type text/plain debería ser rechazado, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Content-Type application/json es aceptado", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(`{"csp-report":{"blocked-uri":"https://evil.com"}}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Host = "admin.test"
+		rr := httptest.NewRecorder()
+		HandleCSPReport(rr, req)
+
+		if rr.Code != http.StatusNoContent {
+			t.Errorf("Content-Type application/json debería ser aceptado, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Sin Content-Type es aceptado (compatibilidad)", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(`{}`))
+		req.Host = "admin.test"
+		rr := httptest.NewRecorder()
+		HandleCSPReport(rr, req)
+
+		if rr.Code != http.StatusBadRequest && rr.Code != http.StatusNoContent {
+			t.Errorf("Sin Content-Type debería procesarse, got %d", rr.Code)
+		}
+	})
+}
