@@ -1,0 +1,7 @@
+# gitleaks configuration — false positive exceptions
+
+[allowlist]
+  # README contains curl examples with placeholder tokens (e.g. "TU_TOKEN")
+  paths = [
+    '''README\.md''',
+  ]

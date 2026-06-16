@@ -67,6 +67,13 @@ nano .env
 docker compose up -d --build
 ```
 
+> ⚠️ **ADVERTENCIA DE SEGURIDAD:** La `MASTER_KEY` es la clave maestra que cifra los secretos TOTP de todos los usuarios. **NUNCA uses una MASTER_KEY de ejemplo o predecible en producción.** Genera una clave segura con:
+> ```bash
+> openssl rand -base64 32
+> ```
+> 
+> Los valores de `MASTER_KEY` en el `Makefile` son **exclusivamente para la suite de tests y la generación de datos de prueba (`make seed`).** Si despliegas con esos valores, cualquier persona con acceso al repositorio podría descifrar los secretos 2FA de tus usuarios.
+
 ---
 
 ### 1. Uso con Git (Recomendado)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
@@ -21,12 +22,24 @@ var (
 	lastLogTime = make(map[string]time.Time)
 )
 
+// safeAlter ejecuta ALTER TABLE solo si la columna no existe.
+func safeAlter(sql, table, column string) {
+	var found int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?", table, column).Scan(&found)
+	if found == 0 {
+		DB.Exec(sql)
+	}
+}
+
 func InitDB() {
 	var err error
-	// Asegurar que el directorio data existe con permisos restrictivos
-	_ = os.MkdirAll("./data", 0700)
-
-	dbPath := "./data/REGIO.db"
+	dbPath := os.Getenv("REGIO_DB_PATH")
+	if dbPath == "" {
+		dbPath = "./data/REGIO.db"
+		_ = os.MkdirAll("./data", 0700)
+	} else if dir := filepath.Dir(dbPath); dir != "." {
+		_ = os.MkdirAll(dir, 0700)
+	}
 	// Si el archivo no existe, lo creamos vacío para establecer permisos antes de abrirlo
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		f, _ := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0600)
@@ -63,11 +76,12 @@ func InitDB() {
 		log.Fatal("Error creando tabla users:", err)
 	}
 
-	DB.Exec("ALTER TABLE users ADD COLUMN invite_token TEXT;")
-	DB.Exec("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;")
-	DB.Exec("ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;")
+	// Migraciones: añadir columnas faltantes sin errores si ya existen
+	safeAlter("ALTER TABLE users ADD COLUMN invite_token TEXT;", "users", "invite_token")
+	safeAlter("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;", "users", "is_admin")
+	safeAlter("ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;", "users", "totp_active")
 	DB.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT, performer TEXT);")
-	DB.Exec("ALTER TABLE events ADD COLUMN performer TEXT;") // Por si la tabla ya existía
+	safeAlter("ALTER TABLE events ADD COLUMN performer TEXT;", "events", "performer")
 
 	createBannedTable := `
 	CREATE TABLE IF NOT EXISTS banned_ips (
@@ -95,7 +109,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla sessions:", err)
 	}
-	DB.Exec("ALTER TABLE sessions ADD COLUMN csrf_token TEXT;") // Asegurar que existe si la tabla ya estaba creada
+	safeAlter("ALTER TABLE sessions ADD COLUMN csrf_token TEXT;", "sessions", "csrf_token")
 
 	createTokensTable := `
 	CREATE TABLE IF NOT EXISTS app_tokens (
@@ -126,7 +140,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla servicios:", err)
 	}
-	DB.Exec("ALTER TABLE servicios ADD COLUMN csp TEXT DEFAULT '';")
+	safeAlter("ALTER TABLE servicios ADD COLUMN csp TEXT DEFAULT '';", "servicios", "csp")
 
 	// Nueva tabla de reportes CSP
 	createCSPReportsTable := `
@@ -155,7 +169,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Error creando tabla bypass_keys:", err)
 	}
-	DB.Exec("ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0")
+	safeAlter("ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0", "bypass_keys", "migrated")
 
 	// Tabla para rate limiting persistente
 	createRateLimitsTable := `

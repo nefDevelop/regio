@@ -180,6 +180,14 @@ func main() {
 	                handlers.CleanupSessions()
 	        }
 	}()	// Router Principal
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "80"
+	}
+	portTLS := os.Getenv("PORT_TLS")
+	if portTLS == "" {
+		portTLS = "443"
+	}
 	tlsCert := os.Getenv("TLS_CERT")
 	tlsKey := os.Getenv("TLS_KEY")
 	forceHTTPS := os.Getenv("FORCE_HTTPS") == "true"
@@ -188,11 +196,11 @@ func main() {
 
 	if tlsCert != "" && tlsKey != "" {
 		// Modo TLS: HTTPS en :443 + redirección HTTP en :80
-		log.Printf("%s reGIO Iniciado con TLS. Admin en: https://%s/admin", db.PrefixREGIO, handlers.AdminDomain)
+		log.Printf("%s reGIO Iniciado con TLS en :%s. Admin en: https://%s/admin", db.PrefixREGIO, portTLS, handlers.AdminDomain)
 
 		// Servidor HTTPS
 		tlsServer := &http.Server{
-			Addr:              ":443",
+			Addr:              ":" + portTLS,
 			Handler:           mainHandler,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
@@ -211,13 +219,13 @@ func main() {
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			})
 			httpServer := &http.Server{
-				Addr:              ":80",
+				Addr:              ":" + port,
 				Handler:           httpHandler,
 				ReadTimeout:       2 * time.Second,
 				WriteTimeout:      2 * time.Second,
 				ReadHeaderTimeout: 1 * time.Second,
 			}
-			log.Printf("%s Servidor HTTP en :80 redirigiendo a HTTPS", db.PrefixINFO)
+			log.Printf("%s Servidor HTTP en :%s redirigiendo a HTTPS", db.PrefixINFO, port)
 			if err := httpServer.ListenAndServe(); err != nil {
 				log.Printf("%s Servidor HTTP de redirección falló: %v", db.PrefixWARN, err)
 			}
@@ -251,10 +259,10 @@ func main() {
 			})
 		}
 
-		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :80", db.PrefixREGIO, handlers.AdminDomain)
+		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :%s", db.PrefixREGIO, handlers.AdminDomain, port)
 
 		server := &http.Server{
-			Addr:              ":80",
+			Addr:              ":" + port,
 			Handler:           mainHandler,
 			ReadTimeout:       60 * time.Second,
 			WriteTimeout:      60 * time.Second,
