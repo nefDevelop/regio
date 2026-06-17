@@ -2,140 +2,249 @@
   <img src="docs/assets/logo.svg" alt="reGIO Logo" width="120">
 </p>
 
-# reGIO: Reverse Proxy Seguro con Panel de Administración
+<h1 align="center">reGIO</h1>
+<p align="center"><strong>Reverse Gateway for Internal Operations</strong></p>
+<p align="center">Proxy inverso seguro escrito en Go — Autenticación centralizada, WAF, Fail2Ban y panel de administración.</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/nef734/regio)](https://golang.org/)
-
-**reGIO** es un proxy inverso y ligero escrito en Go, diseñado para proteger servicios internos mediante autenticación centralizada, control de acceso por IP y mitigación activa de ataques. Ideal para usuarios de Cloudflare Tunnels, Tailscale Funnel o entornos de red privada.
-
----
-
-## Características Principales
-
-- **Autenticación Blindada:** Sistema de sesiones persistentes con protección CSRF global.
-- **Soporte para 2FA (TOTP):** Autenticación en dos pasos con secretos cifrados en reposo (AES-256-GCM).
-- **Anti-Botnets (Rate-Limit por Usuario):** Bloqueo de cuentas tras múltiples intentos fallidos, incluso si el atacante usa múltiples IPs distribuidas.
-- **Fail2Ban de Red:** Bloqueo automático de IPs y rangos (/24 o /64) para mitigar ataques coordinados.
-- **Protección contra DNS Rebinding (TOCTOU):** Validación DNS en tiempo real en el `DialContext` del proxy para evitar el bypass de IPs privadas.
-- **Configuración en DB & CLI:** La configuración de servicios reside en SQLite y se puede gestionar mediante una potente interfaz de línea de comandos.
-- **Seguridad en Repositorio:** Ejecución como usuario no-root (`regio:1000`) y configuración con permisos restringidos.
-- **Tests de Seguridad Integrados:** Suite de tests que valida protecciones contra SSRF, CSRF y Bypass.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/nef734/regio" alt="Go Version"></a>
+  <a href="https://github.com/nef734/regio/actions"><img src="https://img.shields.io/github/actions/workflow/status/nef734/regio/go.yml?branch=main" alt="CI"></a>
+</p>
 
 ---
 
-## Gestión por Consola (CLI)
+## Índice
 
-Puedes gestionar tus servicios sin entrar a la web:
-```bash
-./REGIO list                           # Ver servicios y sus CSPs
-./REGIO add --host app.io --target http://10.0.0.1:80 --csp "default-src 'self'..." # Añadir/Actualizar
-./REGIO del --host app.io              # Eliminar
-```
-
----
-
-## Gestión de Seguridad Avanzada (CSP)
-
-reGIO incluye un sistema de **Content Security Policy (CSP)** dinámico:
-- **Reportes en tiempo real**: Los bloqueos de recursos externos se muestran en el panel de administración.
-- **Configuración por puente**: Cada servicio puede tener su propia política de seguridad.
-- **Flujo Discover & Allow**: Copia las URLs bloqueadas desde la sección de reportes y añádelas a la CSP del puente correspondiente para permitir solo lo que el servicio necesita para funcionar.
+- [Características](#características)
+- [Quick Start](#quick-start)
+- [Variables de Entorno](#variables-de-entorno)
+- [Gestión CLI](#gestión-cli)
+- [Métodos de Autenticación](#métodos-de-autenticación)
+- [Gestión de Usuarios](#gestión-de-usuarios)
+- [Seguridad](#seguridad)
+- [Desarrollo](#desarrollo)
+- [Licencia](#licencia)
 
 ---
 
-## Ejecución de Tests de Seguridad
+## Características
 
-Para validar las protecciones en tu entorno:
-```bash
-make test
-```
+| Capa | Característica | Descripción |
+|------|---------------|-------------|
+| **Proxy** | Reverse Proxy | Enruta tráfico HTTP/HTTPS a servicios internos |
+| **Proxy** | WebSockets | Soporte nativo para conexiones WebSocket |
+| **Proxy** | SSRF Protection | `SafeDialContext` con validación DNS anti-rebinding |
+| **Proxy** | Headers sanitizados | Limpieza automática de credenciales antes de proxy |
+| **Auth** | Sesiones con CSRF | Tokens CSRF persistentes en DB (sobreviven reinicios) |
+| **Auth** | 2FA (TOTP) | Autenticación en dos pasos con secretos cifrados AES-256-GCM |
+| **Auth** | App Tokens | Múltiples métodos: header, query param, Basic Auth, path token |
+| **Auth** | Bypass Tokens | Acceso sin autenticación para webhooks/bots via `X-REGIO-Bypass` |
+| **Auth** | SSO | Inyección de `X-Forwarded-User` al backend |
+| **Seguridad** | WAF Integrado | Detección de SQLi, XSS, path traversal y scanner User-Agents |
+| **Seguridad** | Fail2Ban | Bloqueo por IP (5 fallos/15min) y por subred (15 fallos/1h) |
+| **Seguridad** | Rate Limiting | 100 req/min por IP con persistencia en SQLite |
+| **Seguridad** | Anti-Botnet | Rate limiting por username (10 fallos → 30min bloqueo) |
+| **Seguridad** | CSP Dinámico | Políticas por servicio con panel de reportes |
+| **Seguridad** | HTTPS/TLS | TLS nativo con redirección automática HTTP→HTTPS |
+| **Admin** | Panel Web | Dashboard completo: puentes, usuarios, IPs, sesiones, CSP |
+| **Admin** | CLI | `list`, `add`, `del`, `rotate-key` |
+| **Admin** | Invitaciones | Onboarding seguro con tokens de invitación de un solo uso |
+| **Admin** | Auditoría | Log inmutable de eventos con anti-flood |
+
 ---
 
-## Instalación y Despliegue
+## Quick Start
 
 ```bash
 git clone https://github.com/nef734/regio.git
 cd regio
 
-# Configura tu entorno
 cp .env.example .env
-# Define ADMIN_DOMAIN, MASTER_KEY y TRUSTED_PROXIES
+# Edita .env: ADMIN_DOMAIN, MASTER_KEY (mín. 32 caracteres)
 nano .env
 
-# Despliega con Docker
 docker compose up -d --build
 ```
 
-> ⚠️ **ADVERTENCIA DE SEGURIDAD:** La `MASTER_KEY` es la clave maestra que cifra los secretos TOTP de todos los usuarios. **NUNCA uses una MASTER_KEY de ejemplo o predecible en producción.** Genera una clave segura con:
-> ```bash
-> openssl rand -base64 32
-> ```
-> 
-> Los valores de `MASTER_KEY` en el `Makefile` son **exclusivamente para la suite de tests y la generación de datos de prueba (`make seed`).** Si despliegas con esos valores, cualquier persona con acceso al repositorio podría descifrar los secretos 2FA de tus usuarios.
+Accede a `http://tudominio:9999/setup` para crear el administrador inicial.
+
+> ⚠️ **MASTER_KEY**: Genera una clave segura con `openssl rand -base64 32`.  
+> La clave del `Makefile` es **solo para tests**. Nunca la uses en producción.
+
+### Sin Docker
+
+```bash
+make build
+ADMIN_DOMAIN=admin.tudominio.com MASTER_KEY="$(openssl rand -base64 32)" ./REGIO
+```
 
 ---
 
-### 1. Uso con Git (Recomendado)
-Configura Git para enviar el token en la cabecera estándar de reGIO:
+## Variables de Entorno
+
+| Variable | Obligatoria | Defecto | Descripción |
+|----------|-------------|---------|-------------|
+| `ADMIN_DOMAIN` | **Sí** | — | Dominio del panel de administración |
+| `MASTER_KEY` | **Sí** | — | Clave AES-256 para cifrar secretos TOTP (≥32 caracteres) |
+| `TRUSTED_PROXIES` | No | — | IPs/CIDR separadas por coma que pueden enviar cabeceras de IP real |
+| `ALLOWED_NETWORKS` | No | — | Rangos privados permitidos (ej: `10.0.0.0/8`) |
+| `PORT` | No | `80` | Puerto HTTP |
+| `PORT_TLS` | No | `443` | Puerto HTTPS |
+| `TLS_CERT` | No | — | Ruta al certificado TLS |
+| `TLS_KEY` | No | — | Ruta a la clave TLS |
+| `FORCE_HTTPS` | No | `false` | Redirección forzosa a HTTPS |
+| `REGIO_DB_PATH` | No | `./data/REGIO.db` | Ruta a la base de datos SQLite |
+
+---
+
+## Gestión CLI
+
+```bash
+# Listar servicios configurados
+./REGIO list
+
+# Añadir o actualizar un servicio
+./REGIO add --host app.io --target http://10.0.0.1:80 [--public] [--bypass "X-Header:Value"] [--csp "default-src 'self'"]
+
+# Eliminar un servicio
+./REGIO del --host app.io
+
+# Rotar la clave maestra (re-cifra todos los secretos TOTP)
+./REGIO rotate-key --old "key_actual" --new "nueva_key"
+```
+
+---
+
+## Métodos de Autenticación
+
+### App Tokens (para APIs y scripts)
+
+Genera tokens desde el panel de perfil de usuario. Cuatro formas de usarlos:
+
+```bash
+# Header (recomendado)
+curl -H "X-API-Key: tu_token" https://api.tudominio.com/data
+
+# Query param
+curl "https://api.tudominio.com/data?api_key=tu_token"
+
+# Path token
+curl "https://api.tudominio.com/r-auth/tu_token/data"
+
+# Basic Auth (el token como contraseña)
+curl -u "cualquier:tu_token" https://api.tudominio.com/data
+```
+
+> reGIO elimina automáticamente las cabeceras de autenticación antes de reenviar al backend.
+
+### Git con reGIO
 
 ```bash
 git config http.extraHeader "X-API-Key: TU_TOKEN_DE_REGIO"
 ```
-Esto permite que `git push/pull` funcione sin interferir con las credenciales de tu servidor Git.
 
-### 2. Uso con APIs y Scripts
-El método recomendado es mediante cabeceras HTTP:
+### Bypass Tokens (para webhooks/robots)
 
-```bash
-# Método Recomendado
-curl -H "X-API-Key: TU_TOKEN" http://api.tudominio.com/data
+Ideal para GitHub Webhooks, UptimeRobot, etc.:
 
-# Fallback: Basic Auth (el token se usa como contraseña)
-curl -u "usuario:TU_TOKEN" http://api.tudominio.com/data
-```
-
-### 3. Bypass Tokens (Para Robots y Webhooks)
-Si necesitas que un servicio automático (GitHub, UptimeRobot, etc.) acceda sin autenticación, utiliza un **Bypass Token**:
-1.  En el panel, pulsa el botón **Generar** junto al nuevo puente.
-2.  reGIO creará un token seguro (ej: `rgbp_abcd...`).
-3.  Configura tu servicio para que envíe la siguiente cabecera exacta:
-    *   **Header:** `X-REGIO-Bypass`
-    *   **Valor:** `TU_TOKEN_GENERADO`
-4.  Cualquier petición con esta combinación saltará la pantalla de login. Puedes **revocar** el acceso en cualquier momento eliminando el puente o actualizándolo sin el token.
+1. En el panel admin, pulsa **Generar** junto al puente.
+2. Recibirás un token `rgbp_...`.
+3. El servicio remoto envía: `X-REGIO-Bypass: rgbp_...`
+4. La petición salta la autenticación. Revocable en cualquier momento.
 
 ---
 
 ## Gestión de Usuarios
 
-reGIO utiliza un sistema de **Invitaciones Seguras** para evitar el uso de contraseñas por defecto.
+### Primer usuario (Setup)
 
-### 1. Primer Usuario (Setup)
-Al instalar reGIO por primera vez, si la base de datos está vacía, al acceder a tu dominio administrativo serás redirigido a `/setup`. Aquí crearás la cuenta del administrador principal.
+Al acceder al dominio admin con la DB vacía, reGIO redirige a `/setup` para crear la cuenta de administrador.
 
-### 2. Añadir nuevos usuarios
-1.  Entra al panel de administración.
-2.  En la sección **"Gestión de Usuarios"**, escribe el nombre del nuevo usuario y pulsa "Añadir".
-3.  reGIO generará un **Token de Invitación** único.
-4.  Copia la URL de invitación que aparecerá en el **Registro de Eventos** (ej: `https://tu-admin.com/REGIO-login?invite=abc...`).
-5.  Envía esa URL al usuario; él podrá establecer su contraseña y configurar su 2FA (TOTP) al acceder.
+### Invitaciones
 
----
-
-## Variables de Entorno Críticas
-
-| Variable | Descripción | Ejemplo |
-| :--- | :--- | :--- |
-| `ADMIN_DOMAIN` | Dominio para el panel de control | `admin.regio.io` |
-| `MASTER_KEY` | Clave para cifrar secretos TOTP | `clave_larga_y_secreta` |
-| `TRUSTED_PROXIES` | IPs/Rangos en los que confiar cabeceras | `127.0.0.1,172.18.0.0/16` |
+1. En el panel, sección **Gestión de Usuarios**, añade un nombre.
+2. reGIO genera un token de invitación único.
+3. Envía al usuario la URL: `https://tu-admin.com/REGIO-login?invite=TOKEN`
+4. El usuario establece su contraseña y puede configurar 2FA TOTP.
 
 ---
 
-## Seguridad y Limpieza
-Una vez validada la autenticación, reGIO **elimina automáticamente** las cabeceras `X-API-Key` y los datos de `Authorization` antes de pasar la petición al servicio final, garantizando que tus credenciales de acceso nunca se filtren al backend.
+## Seguridad
+
+### Pipeline de Protección (por petición)
+
+```
+Cliente → SecurityEngine → Auth → Proxy → Backend
+              │                │
+         ┌─────┴──────┐  ┌────┴────┐
+         │ IP Block?  │  │ Cookie? │
+         │ Rate Limit?│  │ Token?  │
+         │ WAF?       │  │ Bypass? │
+         └────────────┘  │ Public? │
+                         └─────────┘
+```
+
+- **IP/Subnet blocking**: 5 fallos → 15 min bloqueo individual; 15 fallos → 1h bloqueo de /24
+- **Rate limiting**: 100 peticiones/minuto por IP (persistido en SQLite)
+- **User rate limiting**: 10 fallos de login por username → 30 min bloqueo (anti-botnet distribuido)
+- **WAF**: Detecta path traversal (`../`, `..\\`), SQL injection (`' OR 1=1--`, `UNION SELECT`), XSS (`<script>`, `onerror=`) y User-Agent de scanners
+- **SSRF Protection**: Validación DNS en tiempo real en `DialContext` — bloquea loopback, link-local, RFC 1918 (salvo autorización explícita)
+- **Fail2Ban**: Persistente en SQLite, sobrevive reinicios del servidor
+- **CSRF**: Tokens por sesión almacenados en DB, sobreviven reinicios
+- **Cabeceras de seguridad**: HSTS, X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Permissions-Policy, Referrer-Policy
+
+### CSP (Content Security Policy)
+
+Cada servicio puede tener su propia política CSP. Las violaciones se reportan al panel de administración, permitiendo un flujo **Discover & Allow**:
+
+1. El servicio opera con una CSP restrictiva.
+2. Los recursos bloqueados aparecen en el panel de reportes.
+3. El admin copia las URLs bloqueadas y las añade a la CSP del puente.
+
+---
+
+## Desarrollo
+
+```bash
+make build          # Compilar el binario
+make test           # Ejecutar tests
+make test-race      # Tests con detector de race conditions
+make audit          # go vet + gosec
+make seed           # Generar DB de prueba en /tmp
+make run-dbtest     # Ejecutar con datos de prueba (puerto 9090)
+make docker-build   # Construir imagen Docker
+```
+
+### Tests
+
+El proyecto incluye **8 suites de tests** que cubren:
+
+- Cifrado/descifrado AES-GCM y Argon2id
+- CRUD de configuración en SQLite
+- Fail2Ban (individual y por subred)
+- WAF (path traversal, SQLi, XSS)
+- SSRF / `SafeDialContext`
+- Bypass tokens
+- CSRF en handlers HTTP
+- Autenticación por token (path, query, header, Basic Auth)
+
+```bash
+make test           # go test -v ./...
+make test-race      # go test -race -v ./...
+```
 
 ---
 
 ## Licencia
+
 MIT License. Hecho para la comunidad Self-Hosted con un ojo en la seguridad.
+
+---
+
+<p align="center">
+  <a href="DOCUMENTATION.md">Documentación Técnica</a> ·
+  <a href="CONTRIBUTING.md">Contribuir</a> ·
+  <a href="SECURITY.md">Reportar Vulnerabilidad</a> ·
+  <a href="roadmap.md">Roadmap</a>
+</p>
