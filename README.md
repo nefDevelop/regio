@@ -176,7 +176,7 @@ Al acceder al dominio admin con la DB vacía, reGIO redirige a `/setup` para cre
 
 ```
 Cliente → SecurityEngine → Auth → Proxy → Backend
-              │                │
+               │              │
          ┌─────┴──────┐  ┌────┴────┐
          │ IP Block?  │  │ Cookie? │
          │ Rate Limit?│  │ Token?  │
