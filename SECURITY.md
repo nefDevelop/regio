@@ -4,7 +4,7 @@
 
 La seguridad de reGIO es nuestra máxima prioridad. Si crees haber encontrado una vulnerabilidad, te pedimos que nos la reportes de manera responsable.
 
-**No abras un issue público.** En su lugar, abre un [advisory de seguridad en GitHub](https://github.com/nef734/regio/security/advisories/new) o contacta directamente a los mantenedores a través de los canales privados del repositorio.
+**No abras un issue público.** En su lugar, abre un [advisory de seguridad en GitHub](https://github.com/nefDevelop/regio/security/advisories/new) o contacta directamente a los mantenedores a través de los canales privados del repositorio.
 
 ## Proceso de Respuesta
 
