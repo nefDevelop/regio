@@ -1,6 +1,12 @@
 # Binarios de Go
 REGIO
+regio
 main
+seed
+
+# Bases de datos runtime
+*.db
+data/
 
 # Configuración sensible y local (¡NUNCA SUBIR!)
 .env
@@ -14,4 +20,7 @@ config.json
 .DS_Store
 dist/
 bin/
-data/
+
+# IDE
+.vscode/
+.idea/
