@@ -1,6 +1,6 @@
 # Documentación Técnica de reGIO
 
-**reGIO** (*Reverse Gateway for Internal Operations*) es un proxy inverso seguro escrito en Go que protege servicios internos mediante autenticación centralizada, control de acceso por IP, WAF y mitigación activa de ataques.
+**reGIO**  es un proxy inverso seguro escrito en Go que protege servicios internos mediante autenticación centralizada, control de acceso por IP, WAF y mitigación activa de ataques.
 
 ---
 

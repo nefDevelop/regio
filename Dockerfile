@@ -9,7 +9,7 @@ RUN go mod download && \
 FROM alpine:latest
 
 LABEL org.opencontainers.image.title="reGIO" \
-      org.opencontainers.image.description="Reverse Gateway for Internal Operations" \
+      org.opencontainers.image.description="Reverse proxie in Go" \
       org.opencontainers.image.source="https://github.com/user/regio"
 
 RUN apk upgrade --no-cache && \

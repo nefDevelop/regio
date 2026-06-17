@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">reGIO</h1>
-<p align="center"><strong>Reverse Gateway for Internal Operations</strong></p>
+<p align="center"><strong>Reverse proxie in GO</strong></p>
 <p align="center">Proxy inverso seguro escrito en Go — Autenticación centralizada, WAF, Fail2Ban y panel de administración.</p>
 
 <p align="center">
