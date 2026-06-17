@@ -8,8 +8,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/nef734/regio" alt="Go Version"></a>
-  <a href="https://github.com/nef734/regio/actions"><img src="https://img.shields.io/github/actions/workflow/status/nef734/regio/go.yml?branch=main" alt="CI"></a>
+  <a href="https://golang.org/"><img src="https://img.shields.io/github/go-mod/go-version/nefDevelop/regio" alt="Go Version"></a>
+  <a href="https://github.com/nefDevelop/regio/actions"><img src="https://img.shields.io/github/actions/workflow/status/nefDevelop/regio/go.yml?branch=main" alt="CI"></a>
 </p>
 
 ---
@@ -57,7 +57,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/nef734/regio.git
+git clone https://github.com/nefDevelop/regio.git
 cd regio
 
 cp .env.example .env
