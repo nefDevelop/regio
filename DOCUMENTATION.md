@@ -29,69 +29,69 @@
  └──────────────────────────┬──────────────────────────────────────────┘
                             │
                     ┌───────┴────────┐
-                    │  Cloudflare /   │
-                    │  Tailscale /    │  (opcional)
-                    │  Nginx          │
+                    │  Cloudflare /  │
+                    │  Tailscale /   │  (opcional)
+                    │  Nginx         │
                     └───────┬────────┘
                             │
  ┌──────────────────────────┴──────────────────────────────────────────┐
  │                         reGIO SERVER                                │
- │                                                                      │
+ │                                                                     │
  │  ┌──────────────────────────────────────────────────────────────┐   │
  │  │                    MainHandler (routing)                     │   │
  │  │                                                              │   │
- │  │  1. ¿Es CSP Report?         → HandleCSPReport()             │   │
- │  │  2. SecurityEngine()        → IP Block? Rate Limit? WAF?    │   │
- │  │  3. ¿Es static?             → ServeStatic()                 │   │
- │  │  4. ¿NeedsSetup?            → redirect /setup               │   │
- │  │  5. ¿Es /REGIO-login?       → HandleLogin()                 │   │
- │  │  6. ¿Tiene cookie válida?   → next                          │   │
- │  │  7. ¿Tiene API token?       → VerifyAppToken()              │   │
+ │  │  1. ¿Es CSP Report?         → HandleCSPReport()              │   │
+ │  │  2. SecurityEngine()        → IP Block? Rate Limit? WAF?     │   │
+ │  │  3. ¿Es static?             → ServeStatic()                  │   │
+ │  │  4. ¿NeedsSetup?            → redirect /setup                │   │
+ │  │  5. ¿Es /REGIO-login?       → HandleLogin()                  │   │
+ │  │  6. ¿Tiene cookie válida?   → next                           │   │
+ │  │  7. ¿Tiene API token?       → VerifyAppToken()               │   │
  │  │     (path/query/header/auth)                                 │   │
- │  │  8. ¿Tiene bypass token?    → CheckBypass()                 │   │
- │  │  9. ¿Es servicio público?   → allow                         │   │
- │  │  10. ProxyHandler()         → reverse proxy al backend      │   │
+ │  │  8. ¿Tiene bypass token?    → CheckBypass()                  │   │
+ │  │  9. ¿Es servicio público?   → allow                          │   │
+ │  │  10. ProxyHandler()         → reverse proxy al backend       │   │
  │  └──────────────────────────────────────────────────────────────┘   │
- │                           │                                          │
+ │                           │                                         │
  │  ┌────────────────────────┴──────────────────────────────────────┐  │
  │  │                   SecurityEngine                              │  │
  │  │                                                               │  │
- │  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   │  │
- │  │   │  IP Filter   │───▶│ Rate Limiter │───▶│     WAF      │   │  │
- │  │   │ (Fail2Ban)   │    │  100 req/min │    │ SQLi/XSS/PT  │   │  │
- │  │   └──────────────┘    └──────────────┘    └──────────────┘   │  │
- │  └──────────────────────────────────────────────────────────────┘  │
- │                           │                                          │
+ │  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    │  │
+ │  │   │  IP Filter   │──▶│ Rate Limiter │──▶│     WAF      │    │  │
+ │  │   │ (Fail2Ban)   │    │  100 req/min │    │ SQLi/XSS/PT  │    │  │
+ │  │   └──────────────┘    └──────────────┘    └──────────────┘    │  │
+ │  └───────────────────────────────────────────────────────────────┘  │
+ │                           │                                         │
  │  ┌────────────────────────┴──────────────────────────────────────┐  │
  │  │                    ProxyHandler                               │  │
  │  │  ┌─────────────────────────────────────────────────────────┐  │  │
  │  │  │  proxyTransport (SafeDialContext)                       │  │  │
  │  │  │  • Valida DNS en tiempo real (anti-rebinding)           │  │  │
- │  │  │  • Bloquea IPs privadas (salvo whitelist)              │  │  │
- │  │  │  • Limpia headers de autenticación                     │  │  │
- │  │  │  • Timeouts: 10s headers, 5s handshake                 │  │  │
+ │  │  │  • Bloquea IPs privadas (salvo whitelist)               │  │  │
+ │  │  │  • Limpia headers de autenticación                      │  │  │
+ │  │  │  • Timeouts: 10s headers, 5s handshake                  │  │  │
  │  │  └─────────────────────────────────────────────────────────┘  │  │
- │  └──────────────────────────────────────────────────────────────┘  │
- │                                                                      │
+ │  └───────────────────────────────────────────────────────────────┘  │
+ │                                                                     │
  │  ┌──────────────────────────────────────────────────────────────┐   │
- │  │  Background Goroutine (cada 10 min)                         │   │
- │  │  • LimpiarBloqueosExpirados()                               │   │
- │  │  • LimpiarRateLimiter()                                     │   │
- │  │  • LimpiarIntentosUsuario()                                 │   │
- │  │  • CleanupSessions() (sesiones > 7 días)                    │   │
+ │  │  Background Goroutine (cada 10 min)                          │   │
+ │  │  • LimpiarBloqueosExpirados()                                │   │
+ │  │  • LimpiarRateLimiter()                                      │   │
+ │  │  • LimpiarIntentosUsuario()                                  │   │
+ │  │  • CleanupSessions() (sesiones > 7 días)                     │   │
  │  └──────────────────────────────────────────────────────────────┘   │
- │                                                                      │
+ │                                                                     │
  └──────────────────────────┬──────────────────────────────────────────┘
                             │
  ┌──────────────────────────┴──────────────────────────────────────────┐
- │                     SERVIDORES INTERNOS                              │
- │                                                                      │
- │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
- │  │  Gitea   │  │  Grafana │  │  Jenkins │  │  Otros servicios │   │
- │  │ :3000    │  │ :3001    │  │ :8080    │  │  :XXXX           │   │
- │  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘   │
- │                                                                      │
- └──────────────────────────────────────────────────────────────────────┘
+ │                     SERVIDORES INTERNOS                             │
+ │                                                                     │
+ │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐     │
+ │  │  Gitea   │  │  Grafana │  │  Jenkins │  │  Otros servicios │     │
+ │  │ :3000    │  │ :3001    │  │ :8080    │  │  :XXXX           │     │
+ │  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘     │
+ │                                                                     │
+ └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Capas del Sistema
@@ -387,21 +387,21 @@ Petición entrante
        ▼
 ┌─────────────────────────────┐
 │ ¿Es /REGIO-login?           │──SÍ──▶ HandleLogin()
-└─────────────────────────────┘                              ┌─────────────────┐
+└─────────────────────────────┘                             ┌─────────────────┐
        NO                                                   │ ¿Login exitoso? │──NO──▶ 401 + evento fallo
        ▼                                                    └────────┬────────┘
 ┌─────────────────────────────┐                                     SÍ
 │ ¿Cookie de sesión?          │──SÍ──▶ Validar en DB                │
-│ (REGIO_session)             │        │                            ▼
+│ (REGIO_session)             │        │                             ▼
 └─────────────────────────────┘        │                      Crear sesión + cookie
        NO                              VÁLIDA                  + CSRF token
-       ▼                                │
+       ▼                               │
 ┌─────────────────────────────┐        │
 │ ¿API Token?                 │        │
-│ ┌─ Path: /r-auth/TOKEN/... │        │
-│ ├─ Query: ?api_key=TOKEN   │        │
-│ ├─ Header: X-API-Key       │        │
-│ └─ Basic Auth              │        │
+│ ┌─ Path: /r-auth/TOKEN/...  │        │
+│ ├─ Query: ?api_key=TOKEN    │        │
+│ ├─ Header: X-API-Key        │        │
+│ └─ Basic Auth               │        │
 └─────────────────────────────┘        │
        NO                              │
        ▼                               │
@@ -473,7 +473,7 @@ Petición a backend
        ▼
 ┌─────────────────────────────┐
 │ ¿IP en rango privado?       │──SÍ──▶ ¿Está en ALLOWED_NETWORKS
-│ (127.0.0.0/8, 10.0.0.0/8,  │       o es target configurado?
+│ (127.0.0.0/8, 10.0.0.0/8,   │       o es target configurado?
 │  172.16.0.0/12,             │           │
 │  192.168.0.0/16,            │       SÍ ─┴─ NO
 │  ::1, fe80::/10, fc00::/7)  │       ▼      ▼
@@ -660,11 +660,11 @@ Push / PR a main
        │
        ▼
 ┌─────────────────┐
-│ Code Quality     │── Build + Vet
+│ Code Quality    │── Build + Vet
 ├─────────────────┤
-│ Tests + Race     │── go test -race
+│ Tests + Race    │── go test -race
 ├─────────────────┤
-│ Security Scan    │── gosec
+│ Security Scan   │── gosec
 └─────────────────┘
        │
        ▼
