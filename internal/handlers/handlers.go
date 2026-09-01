@@ -1211,6 +1211,13 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 func MainHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s INCOMING: %s %s (Host: %s, Remote: %s)", db.PrefixIN, r.Method, r.URL.Path, r.Host, r.RemoteAddr)
 
+	if r.URL.Path == "/health" {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+		return
+	}
+
 	if strings.HasPrefix(r.URL.Path, "/api/csp-report") {
 		HandleCSPReport(w, r)
 		return
