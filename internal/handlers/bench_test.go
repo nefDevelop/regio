@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"io"
+	"log"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -25,6 +28,10 @@ func BenchmarkSanitizeLogURI(b *testing.B) {
 // BenchmarkMainHandler_Health mide el overhead de entrada completo del
 // MainHandler en su camino más barato (health sale antes del SecurityEngine).
 func BenchmarkMainHandler_Health(b *testing.B) {
+	// El MainHandler loguea cada petición: silenciar para que los perfiles de
+	// benchmark (y bench/baseline.txt) no se llenen de logs.
+	log.SetOutput(io.Discard)
+	b.Cleanup(func() { log.SetOutput(os.Stderr) })
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		rr := httptest.NewRecorder()

@@ -67,6 +67,40 @@ jobs:
       - name: make test-e2e
         run: make test-e2e
 
+  bench:
+    name: Bench gate (allocs/bytes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      # Gate de regresiones de allocs/op y B/op contra bench/baseline.txt
+      # (ns/op solo informativo: los runners difieren de la máquina local)
+      - name: make bench-gate
+        run: make bench-gate
+
+  fuzz:
+    name: Fuzzing (campañas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # Campañas nativas de Go sobre WAF y parsers (~2-3 min)
+      - name: make test-fuzz
+        run: make test-fuzz
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

@@ -1,0 +1,89 @@
+goos: android
+goarch: arm64
+pkg: regio/internal/security
+BenchmarkCheckWAF_PeticiónLimpia-4         	   43022	      5952 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_PeticiónLimpia-4         	   36591	      6559 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_PeticiónLimpia-4         	   38582	      5928 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_PeticiónLimpia-4         	   43026	      5935 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_PeticiónLimpia-4         	   42452	      5740 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_PeticiónLimpia-4         	   43292	      6157 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8350	     29639 ns/op	     121 B/op	       4 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8378	     30110 ns/op	     121 B/op	       4 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8445	     29230 ns/op	     117 B/op	       4 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8558	     29431 ns/op	     117 B/op	       4 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8431	     28885 ns/op	     121 B/op	       4 allocs/op
+BenchmarkCheckWAF_AtaqueSQLi-4             	    8078	     29686 ns/op	     117 B/op	       4 allocs/op
+BenchmarkCheckRateLimit-4                  	      66	   3859983 ns/op	    3404 B/op	      46 allocs/op
+BenchmarkCheckRateLimit-4                  	      52	   3851620 ns/op	    2972 B/op	      43 allocs/op
+BenchmarkCheckRateLimit-4                  	      61	   4124334 ns/op	    3405 B/op	      50 allocs/op
+BenchmarkCheckRateLimit-4                  	      72	   2813087 ns/op	    3749 B/op	      55 allocs/op
+BenchmarkCheckRateLimit-4                  	     108	   2310885 ns/op	    5306 B/op	      69 allocs/op
+BenchmarkCheckRateLimit-4                  	     103	   2232848 ns/op	    5553 B/op	      73 allocs/op
+BenchmarkIsIPBlocked-4                     	  234820	       941.3 ns/op	      32 B/op	       3 allocs/op
+BenchmarkIsIPBlocked-4                     	  258162	       990.5 ns/op	      32 B/op	       3 allocs/op
+BenchmarkIsIPBlocked-4                     	  253249	      1008 ns/op	      32 B/op	       3 allocs/op
+BenchmarkIsIPBlocked-4                     	  227506	       983.2 ns/op	      32 B/op	       3 allocs/op
+BenchmarkIsIPBlocked-4                     	  255417	       950.6 ns/op	      32 B/op	       3 allocs/op
+BenchmarkIsIPBlocked-4                     	  259816	       949.3 ns/op	      32 B/op	       3 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  702727	       364.9 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  723708	       370.8 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  678964	       395.6 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  755694	       354.5 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  654154	       358.6 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_Off-4              	  698456	       363.5 ns/op	      32 B/op	       1 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  204721	      1278 ns/op	      48 B/op	       2 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  207235	      1279 ns/op	      48 B/op	       2 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  204117	      1210 ns/op	      48 B/op	       2 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  194922	      1221 ns/op	      48 B/op	       2 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  205512	      1226 ns/op	      48 B/op	       2 allocs/op
+BenchmarkCheckGeoPolicy_AllowConLookup-4   	  201327	      1225 ns/op	      48 B/op	       2 allocs/op
+BenchmarkParseCountries-4                  	   74942	      2892 ns/op	     272 B/op	       3 allocs/op
+BenchmarkParseCountries-4                  	   93487	      2786 ns/op	     272 B/op	       3 allocs/op
+BenchmarkParseCountries-4                  	   79390	      3023 ns/op	     272 B/op	       3 allocs/op
+BenchmarkParseCountries-4                  	   92325	      3019 ns/op	     272 B/op	       3 allocs/op
+BenchmarkParseCountries-4                  	   91234	      2815 ns/op	     272 B/op	       3 allocs/op
+BenchmarkParseCountries-4                  	   94449	      2858 ns/op	     272 B/op	       3 allocs/op
+PASS
+ok  	regio/internal/security	12.934s
+goos: android
+goarch: arm64
+pkg: regio/internal/handlers
+BenchmarkSessionHash-4          	  270932	       970.8 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSessionHash-4          	  244071	       970.8 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSessionHash-4          	  254632	       991.9 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSessionHash-4          	  290839	       972.1 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSessionHash-4          	  289275	       904.0 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSessionHash-4          	  291379	       938.3 ns/op	      96 B/op	       2 allocs/op
+BenchmarkSanitizeLogURI-4       	  240301	      1188 ns/op	     144 B/op	       3 allocs/op
+BenchmarkSanitizeLogURI-4       	  250692	      1069 ns/op	     144 B/op	       3 allocs/op
+BenchmarkSanitizeLogURI-4       	  235293	      1144 ns/op	     144 B/op	       3 allocs/op
+BenchmarkSanitizeLogURI-4       	  247144	      1117 ns/op	     144 B/op	       3 allocs/op
+BenchmarkSanitizeLogURI-4       	  254534	      1159 ns/op	     144 B/op	       3 allocs/op
+BenchmarkSanitizeLogURI-4       	  248119	      1151 ns/op	     144 B/op	       3 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     22133 ns/op	    6179 B/op	      23 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     21576 ns/op	    6179 B/op	      23 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     24912 ns/op	    6179 B/op	      23 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     23259 ns/op	    6179 B/op	      23 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     21897 ns/op	    6179 B/op	      23 allocs/op
+BenchmarkMainHandler_Health-4   	   10000	     22482 ns/op	    6179 B/op	      23 allocs/op
+PASS
+ok  	regio/internal/handlers	5.252s
+goos: android
+goarch: arm64
+pkg: regio/internal/auth
+BenchmarkHashPassword-4     	       2	 175304922 ns/op	33564800 B/op	      74 allocs/op
+BenchmarkHashPassword-4     	       2	 161472682 ns/op	33561932 B/op	      67 allocs/op
+BenchmarkHashPassword-4     	       2	 154636745 ns/op	33561960 B/op	      69 allocs/op
+BenchmarkHashPassword-4     	       2	 186526562 ns/op	33561848 B/op	      68 allocs/op
+BenchmarkHashPassword-4     	       2	 165543490 ns/op	33562088 B/op	      68 allocs/op
+BenchmarkHashPassword-4     	       1	 208145417 ns/op	33561480 B/op	      68 allocs/op
+BenchmarkVerifyPassword-4   	       2	 197627708 ns/op	33561664 B/op	      60 allocs/op
+BenchmarkVerifyPassword-4   	       2	 171186380 ns/op	33561904 B/op	      60 allocs/op
+BenchmarkVerifyPassword-4   	       2	 173636719 ns/op	33562016 B/op	      61 allocs/op
+BenchmarkVerifyPassword-4   	       2	 161042864 ns/op	33562144 B/op	      61 allocs/op
+BenchmarkVerifyPassword-4   	       2	 169269688 ns/op	33560280 B/op	      57 allocs/op
+BenchmarkVerifyPassword-4   	       2	 160304401 ns/op	33560336 B/op	      58 allocs/op
+PASS
+ok  	regio/internal/auth	8.115s
+PASS
+ok  	regio/internal/db	0.024s

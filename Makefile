@@ -4,8 +4,8 @@
 #    y defínela en tu archivo .env (ver .env.example).
 
 .PHONY: build run run-dbtest seed test test-unit test-integration test-contract \
-	test-cover test-race test-e2e test-smoke test-fuzz bench audit ci clean \
-	docker-build help
+	test-cover test-race test-e2e test-smoke test-fuzz bench bench-baseline \
+	bench-gate audit ci clean docker-build help
 
 BINARY_NAME=REGIO
 
@@ -116,6 +116,20 @@ test-fuzz:
 
 bench:
 	$(TEST_KEY) go test -run=^$$ -bench=. -benchmem ./internal/security/ ./internal/handlers/
+
+# --- Gate de rendimiento (B3a, aprobado) -----------------------------------
+# Compara allocs/op y B/op (plataforma-independientes) contra el baseline con
+# benchstat; ns/op solo es informativo. Count=6 para significancia estadística.
+BENCH_COUNT=6
+BENCH_PKGS=./internal/security/ ./internal/handlers/ ./internal/auth/ ./internal/db/
+
+# Regenera bench/baseline.txt (manual; revisar el diff antes de commitear)
+bench-baseline:
+	BENCH_COUNT=$(BENCH_COUNT) sh scripts/bench_gate.sh baseline
+
+# Falla si hay regresión significativa de allocs (>10%) o bytes (>20%)
+bench-gate:
+	BENCH_COUNT=$(BENCH_COUNT) sh scripts/bench_gate.sh gate
 
 # ---------------------------------------------------------------------------
 # Auditoría de código
