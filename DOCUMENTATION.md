@@ -18,6 +18,7 @@
 10. [Seguridad del Contenedor Docker](#10-seguridad-del-contenedor-docker)
 11. [CI/CD](#11-cicd)
 12. [Constantes de Seguridad](#12-constantes-de-seguridad)
+13. [Estrategia de Testing](#13-estrategia-de-testing)
 
 ---
 
@@ -41,7 +42,8 @@
  │  │                    MainHandler (routing)                     │   │
  │  │                                                              │   │
  │  │  1. ¿Es CSP Report?         → HandleCSPReport()              │   │
- │  │  2. SecurityEngine()        → IP Block? Rate Limit? WAF?     │   │
+ │  │  2. SecurityEngine()        → GeoIP? IP Block? Rate Limit?   │   │
+ │  │                             → WAF?                           │   │
  │  │  3. ¿Es static?             → ServeStatic()                  │   │
  │  │  4. ¿NeedsSetup?            → redirect /setup                │   │
  │  │  5. ¿Es /REGIO-login?       → HandleLogin()                  │   │
@@ -56,10 +58,15 @@
  │  ┌────────────────────────┴──────────────────────────────────────┐  │
  │  │                   SecurityEngine                              │  │
  │  │                                                               │  │
- │  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    │  │
- │  │   │  IP Filter   │──▶│ Rate Limiter │──▶│     WAF      │    │  │
- │  │   │ (Fail2Ban)   │    │  100 req/min │    │ SQLi/XSS/PT  │    │  │
- │  │   └──────────────┘    └──────────────┘    └──────────────┘    │  │
+ │  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │  │
+ │  │   │    GeoIP     │─▶│  IP Filter   │─▶│ Rate Limiter │        │  │
+ │  │   │ (por país)   │  │ (Fail2Ban)   │  │  100 req/min │        │  │
+ │  │   └──────────────┘  └──────────────┘  └──────┬───────┘        │  │
+ │  │                                              ▼                │  │
+ │  │                                       ┌──────────────┐        │  │
+ │  │                                       │     WAF      │        │  │
+ │  │                                       │ SQLi/XSS/PT  │        │  │
+ │  │                                       └──────────────┘        │  │
  │  └───────────────────────────────────────────────────────────────┘  │
  │                           │                                         │
  │  ┌────────────────────────┴──────────────────────────────────────┐  │
@@ -79,6 +86,7 @@
  │  │  • LimpiarRateLimiter()                                      │   │
  │  │  • LimpiarIntentosUsuario()                                  │   │
  │  │  • CleanupSessions() (sesiones > 7 días)                     │   │
+ │  │  • ReloadGeoIPIfChanged() (recarga BD GeoIP si cambió)       │   │
  │  └──────────────────────────────────────────────────────────────┘   │
  │                                                                     │
  └──────────────────────────┬──────────────────────────────────────────┘
@@ -100,7 +108,7 @@
 |------|-----------|-----------------|
 | **Entry Point** | `cmd/regio/` | Arranque, parsing de flags, servidor HTTP/TLS |
 | **Routing** | `internal/handlers/` | `MainHandler`, lógica de negocio, templates HTML |
-| **Seguridad** | `internal/security/` | WAF, Fail2Ban, rate limiting, SSRF, bypass tokens |
+| **Seguridad** | `internal/security/` | WAF, Fail2Ban, rate limiting, SSRF, bypass tokens, geobloqueo GeoIP |
 | **Autenticación** | `internal/auth/` | Argon2id, TOTP, AES-GCM, sesiones, app tokens |
 | **Datos** | `internal/db/` | SQLite, migraciones, CRUD, logging de eventos |
 | **Modelos** | `internal/models/` | Estructuras de datos compartidas |
@@ -147,6 +155,9 @@ regio/
 │       ├── engine.go            # SecurityEngine: orquestación de protecciones
 │       ├── bypass.go            # Gestión de bypass tokens
 │       ├── bypass_test.go       # Tests de bypass
+│       ├── geo.go               # Política geográfica (allow/deny por país)
+│       ├── geo_test.go          # Tests de geobloqueo
+│       ├── geoip.go             # Lector de la BD GeoIP (.mmdb) y recarga
 │       ├── ip_filter.go         # Fail2Ban por IP y subred
 │       ├── network.go           # SafeDialContext, validación IP
 │       ├── network_test.go      # Tests de red/SSRF
@@ -504,6 +515,66 @@ Permissions-Policy: geolocation=(), microphone=(), camera=()
 Referrer-Policy: no-referrer
 ```
 
+### 5.8 Geobloqueo por País (GeoIP) — `internal/security/geo.go` + `geoip.go`
+
+Filtra las peticiones por el país de origen de la IP usando una base de datos
+local en formato MaxMind DB (`.mmdb`), consultada en ~1µs sin salir de la red.
+
+```
+Petición
+   │
+   ▼
+┌────────────────────────────┐
+│ ¿IP privada/local o        │──SÍ──▶ Permitir (nunca se geolocaliza)
+│ no global-unicast?         │
+└────────────────────────────┘
+   │ NO
+   ▼
+┌────────────────────────────┐     ┌──────────────────────────────┐
+│ ¿Existe override por este  │─SÍ─▶│ Política del servicio        │
+│ servicio (host)?           │      │ (allow/deny de la lista)     │
+└────────────────────────────┘      └──────────────┬───────────────┘
+   │ NO                                            │
+   ▼                                               │
+┌────────────────────────────┐                     │
+│ Política global            │◀────────────────────┘
+│ (GEO_MODE / panel admin)   │
+└────────────────────────────┘
+   │
+   ▼
+┌────────────────────────────┐
+│ Lookup en la BD .mmdb      │──error/desconocido──▶ ¿fail open?
+│ (país ISO alpha-2)         │                           │SÍ → Permitir
+└────────────────────────────┘                           │NO → 403
+   │
+   ▼
+allow: ¿país ∈ lista?  no ─▶ 403 | sí ─▶ Permitir
+deny : ¿país ∈ lista?  sí ─▶ 403 | no ─▶ Permitir
+```
+
+- **Modos**: `off` (sin filtro), `allow` (lista blanca: solo pasan los países
+  listados) y `deny` (lista negra: todos pasan salvo los listados).
+- **Fail mode** (`open`/`closed`): qué hacer si la BD no está cargada o la IP
+  no se puede resolver. Se define en el panel admin.
+- **Override por servicio**: cada puente puede heredar la global (`Heredar`),
+  forzar `Abierto` o definir su propia lista `allow`/`deny` (columnas
+  `geo_mode`/`geo_countries` de la tabla `servicios`).
+- **Base de datos**: `GEOIP_DB_PATH` (por defecto `./data/GeoLite2-Country.mmdb`).
+  Descarga gratuita: [MaxMind GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data)
+  (requiere cuenta) o [DB-IP Lite](https://db-ip.com/db/ip/ip-dbip-country-lite.mmdb.gz)
+  (sin registro, mismo formato). Se recarga automáticamente cada 10 minutos si
+  el fichero cambia (actualizaciones mensuales).
+- **Persistencia**: la política global vive en la tabla `settings`
+  (`geo_mode`, `geo_countries`, `geo_fail_mode`); las variables de entorno
+  aportan el valor inicial y el panel admin las sobrescribe.
+- **Respuesta**: `403 Forbidden` con mensaje genérico (no revela la política);
+  cada bloqueo queda registrado en la tabla `events` con performer `geo`.
+- **Excepciones**: `/health` no pasa por el `SecurityEngine` (readiness de
+  Docker, nunca geo-bloquea). `/api/csp-report` **sí** pasa por el engine
+  desde el fix S2 (rate limit + geo + WAF; antes era un endpoint sin limitar).
+  El dominio admin **sí** sigue la política global (recuperación:
+  `GEO_MODE=off` + reinicio).
+
 ---
 
 ## 6. API de Administración
@@ -536,6 +607,8 @@ Referrer-Policy: no-referrer
 | Generar bypass key | POST | `action=generate_bypass`, `host`, `name` | Crea bypass token |
 | Revocar bypass key | POST | `action=revoke_bypass`, `token` | Elimina bypass token |
 | Limpiar CSP reports | POST | `action=clear_reports` | Vacía tabla de reportes CSP |
+| Política geográfica global | POST | `accion=set_geo_policy`, `geo_mode`, `geo_countries`, `geo_fail_mode` | Guarda el geobloqueo global (allow/deny/off + fail mode) |
+| Política geográfica por servicio | POST | `accion=set_service_geo`, `host`, `geo_mode`, `geo_countries` | Override de geobloqueo para un puente (vacío = hereda global) |
 
 ---
 
@@ -599,6 +672,10 @@ Re-cifra todos los secretos TOTP almacenados con la nueva clave maestra. Requier
 | `TLS_KEY` | No | — | Ruta al archivo de clave TLS |
 | `FORCE_HTTPS` | No | `false` | Redirigir todo el tráfico HTTP a HTTPS |
 | `REGIO_DB_PATH` | No | `./data/REGIO.db` | Ruta al archivo de base de datos SQLite |
+| `GEO_MODE` | No | `off` | Política geográfica global: `off`, `allow` (lista blanca) o `deny` (lista negra) |
+| `GEO_COUNTRIES` | No | — | Países ISO alpha-2 separados por coma (ej: `ES, FR`); default de la política global |
+| `GEO_FAIL_MODE` | No | `open` | Comportamiento si no se determina el país: `open` (permitir) o `closed` (bloquear) |
+| `GEOIP_DB_PATH` | No | `./data/GeoLite2-Country.mmdb` | Ruta a la base de datos GeoIP de países (`.mmdb`) |
 
 ---
 
@@ -649,9 +726,11 @@ El `Dockerfile` y `docker-compose.yml` implementan las siguientes medidas de har
 
 | Job | Acción |
 |-----|--------|
-| **Code Quality** | `go build ./...` + `go vet ./...` |
-| **Tests + Race** | `go test -race -v ./...` con `MASTER_KEY` de test |
-| **Security Scan** | `gosec -no-fail -fmt text ./...` |
+| **Build + Vet** | `go build ./...` + `go vet ./...` |
+| **Tests + Coverage Gate** | `make test` — unitarios + suite completa + **gate de cobertura** por umbrales |
+| **Tests + Race** | `make test-race` |
+| **E2E (binario real)** | `make test-e2e` — arranque real, flujos completos, CLI y shutdown |
+| **Security Scan** | `make audit` — `go vet` + `gosec` **con fallo real** (baseline `-exclude` de clases preexistentes; ver `Makefile`) |
 
 ### Workflow
 
@@ -659,13 +738,17 @@ El `Dockerfile` y `docker-compose.yml` implementan las siguientes medidas de har
 Push / PR a main
        │
        ▼
-┌─────────────────┐
-│ Code Quality    │── Build + Vet
-├─────────────────┤
-│ Tests + Race    │── go test -race
-├─────────────────┤
-│ Security Scan   │── gosec
-└─────────────────┘
+┌──────────────────────────┐
+│ Build + Vet              │── compila y analiza
+├──────────────────────────┤
+│ Tests + Coverage Gate    │── make test (falla si baja la cobertura)
+├──────────────────────────┤
+│ Tests + Race             │── make test-race
+├──────────────────────────┤
+│ E2E (binario real)       │── make test-e2e
+├──────────────────────────┤
+│ Security Scan            │── make audit (gosec bloqueante)
+└──────────────────────────┘
        │
        ▼
      ✅ Todos pasan → merge seguro
@@ -688,6 +771,57 @@ Push / PR a main
 | Intervalo de limpieza | 10 minutos | `main.go:173-181` |
 | Response header timeout | 10 segundos | `handlers.go:59` |
 | TLS handshake timeout | 5 segundos | `handlers.go:57` |
+
+---
+
+## 13. Estrategia de Testing
+
+Todo se orquesta vía `make` (punto de entrada único; `make help` lista todos
+los targets). Ejecución local equivalente a CI: `make ci`.
+
+### Taxonomía de pruebas
+
+| Nivel | Dónde | Qué cubre |
+|-------|-------|-----------|
+| **Unitarias** | `internal/*` sin I/O | política geo, Argon2/TOTP, WAF y sus prefiltros, parsers, rate limiter |
+| **Contrato / API** | `*_contract_test.go`, `characterization_*_test.go` | matriz de routing/autorización de `MainHandler` (23 casos), contrato de las 12 acciones del panel (+CSRF×12), contrato dual del proxy (credenciales, cookies, mensajes 404), esquema DB y migración desde esquema antiguo |
+| **Integración** | handlers/db con SQLite real | proxy↔backend mock con cabeceras, sesiones, login/2FA/invitaciones, CSP→DB |
+| **Sistema / E2E** | `e2e/` tras `-tags e2e` | binario real compilado: setup→login→admin→proxy→logout, geobloqueo, CLI (`add/list/del`), **apagado ordenado con SIGTERM** |
+| **Smoke** | `make test-smoke` | subconjunto E2E rápido (<30 s) |
+
+### Caracterización como red de seguridad
+
+Antes de refactorizar el monolito (R1–R4: unificación del proxy duplicado,
+extracción del dispatch del panel, split de `db.Open/Migrate`, helpers puros)
+se escribieron **tests de caracterización** que congelan el comportamiento
+previo (mensajes 404, mapeos de status, quirks). Cada extracción se validó
+contra esa red y cada cambio deliberado de comportamiento actualizó la
+aserción correspondiente con su justificación en el propio test.
+
+### Gate de cobertura
+
+`make test` genera un perfil con `-covermode=atomic -coverpkg=./...` y
+`scripts/cover_gate.sh` falla si baja un umbral (los porcentajes se miden
+fusionando los bloques duplicados que genera cada binario de test). Umbrales
+actuales: **global ≥70%**, auth/db/handlers/security ≥83–85%; `cmd/` está
+excluido porque lo cubre el e2e. Política de ratchet: los umbrales solo suben.
+
+### Fuzzing y mutación
+
+- Fuzzing nativo (stdlib) sobre `CheckWAF`, `ParseCountries`, `IsValidTarget`,
+  `IsPrivateIP` y `sanitizeLogURI`: los seeds corren en cada `go test`;
+  `make test-fuzz` lanza campaigns con budget (plataformas con `-fuzz`).
+- Auditoría de **mutación manual** sobre `internal/security`: los mutantes se
+  aplican, se ejecuta la suite y se restauran; última pasada **13/13
+  muertos** (umbrales de Fail2Ban/rate limit, regex del WAF, fail modes geo,
+  validaciones de red).
+
+### Aislamiento
+
+`fixtures_test.go` (handlers) aísla el estado global por test
+(`isolateState`, `cleanUsers` con borrado de hijas FK, `seedSession`); la suite
+es estable con `go test -shuffle=on`. El split unit/integración usa
+`testing.Short()`.
 
 ---
 

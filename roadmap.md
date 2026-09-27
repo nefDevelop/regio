@@ -17,6 +17,7 @@ Este documento detalla las funcionalidades planeadas y el estado actual del desa
 
 ## Completado ✅
 
+- [x] **Geobloqueo por país (GeoIP):** Filtrado allow/deny con BD local `.mmdb` (MaxMind/DB-IP), política global + override por servicio, fail-open/fail-closed configurable desde el panel admin.
 - [x] **SSO / Proxy Auth:** Inyección de identidad (`X-Forwarded-User`) al backend para inicio de sesión automático (Single Sign-On).
 - [x] Proxy Inverso core con soporte HTTP/1.1 y WebSockets.
 - [x] Autenticación de sesiones y App Tokens.

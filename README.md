@@ -43,6 +43,7 @@
 | **Auth** | SSO | Inyección de `X-Forwarded-User` al backend |
 | **Seguridad** | WAF Integrado | Detección de SQLi, XSS, path traversal y scanner User-Agents |
 | **Seguridad** | Fail2Ban | Bloqueo por IP (5 fallos/15min) y por subred (15 fallos/1h) |
+| **Seguridad** | Geobloqueo GeoIP | Filtrado por país (allow/deny) con BD local `.mmdb`, global o por servicio |
 | **Seguridad** | Rate Limiting | 100 req/min por IP con persistencia en SQLite |
 | **Seguridad** | Anti-Botnet | Rate limiting por username (10 fallos → 30min bloqueo) |
 | **Seguridad** | CSP Dinámico | Políticas por servicio con panel de reportes |
@@ -95,6 +96,15 @@ ADMIN_DOMAIN=admin.tudominio.com MASTER_KEY="$(openssl rand -base64 32)" ./REGIO
 | `TLS_KEY` | No | — | Ruta a la clave TLS |
 | `FORCE_HTTPS` | No | `false` | Redirección forzosa a HTTPS |
 | `REGIO_DB_PATH` | No | `./data/REGIO.db` | Ruta a la base de datos SQLite |
+| `GEO_MODE` | No | `off` | Geobloqueo global: `off`, `allow` (solo países listados) o `deny` (bloquea los listados) |
+| `GEO_COUNTRIES` | No | — | Países ISO alpha-2 separados por coma (ej: `ES, FR`) |
+| `GEO_FAIL_MODE` | No | `open` | Si no se determina el país: `open` (permitir) o `closed` (bloquear) |
+| `GEOIP_DB_PATH` | No | `./data/GeoLite2-Country.mmdb` | BD GeoIP de países (GeoLite2 de MaxMind o DB-IP Lite, formato `.mmdb`) |
+
+> 🌍 **Geobloqueo**: descarga `GeoLite2-Country.mmdb` ([MaxMind](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data), requiere cuenta) o
+> [`dbip-country-lite.mmdb.gz`](https://db-ip.com/db/ip/ip-dbip-country-lite.mmdb.gz) (sin registro), descomprímela en `./data/` y configura
+> `GEO_MODE=allow` + `GEO_COUNTRIES=ES` (solo España) o `GEO_MODE=deny` + `GEO_COUNTRIES=IN` (todo salvo India).
+> La política también se gestiona desde el panel admin → «Filtrado por País (GeoIP)», que sobrescribe estas variables.
 
 ---
 
@@ -178,13 +188,14 @@ Al acceder al dominio admin con la DB vacía, reGIO redirige a `/setup` para cre
 Cliente → SecurityEngine → Auth → Proxy → Backend
                │              │
          ┌─────┴──────┐  ┌────┴────┐
-         │ IP Block?  │  │ Cookie? │
-         │ Rate Limit?│  │ Token?  │
-         │ WAF?       │  │ Bypass? │
-         └────────────┘  │ Public? │
-                         └─────────┘
+         │ GeoIP?     │  │ Cookie? │
+         │ IP Block?  │  │ Token?  │
+         │ Rate Limit?│  │ Bypass? │
+         │ WAF?       │  │ Public? │
+         └────────────┘  └─────────┘
 ```
 
+- **Geobloqueo por país**: lista blanca (`allow`, ej: solo España) o lista negra (`deny`, ej: todo menos India) sobre una BD GeoIP local; configurable como política global y por servicio, con fail-open/fail-closed elegible en el panel
 - **IP/Subnet blocking**: 5 fallos → 15 min bloqueo individual; 15 fallos → 1h bloqueo de /24
 - **Rate limiting**: 100 peticiones/minuto por IP (persistido en SQLite)
 - **User rate limiting**: 10 fallos de login por username → 30 min bloqueo (anti-botnet distribuido)
@@ -208,31 +219,42 @@ Cada servicio puede tener su propia política CSP. Las violaciones se reportan a
 
 ```bash
 make build          # Compilar el binario
-make test           # Ejecutar tests
-make test-race      # Tests con detector de race conditions
-make audit          # go vet + gosec
 make seed           # Generar DB de prueba en /tmp
 make run-dbtest     # Ejecutar con datos de prueba (puerto 9090)
 make docker-build   # Construir imagen Docker
+make audit          # go vet + gosec (falla ante hallazgos fuera del baseline)
+make help           # Lista completa de targets
 ```
 
 ### Tests
 
-El proyecto incluye **8 suites de tests** que cubren:
+Todo se orquesta vía `make` (punto de entrada único):
 
-- Cifrado/descifrado AES-GCM y Argon2id
-- CRUD de configuración en SQLite
-- Fail2Ban (individual y por subred)
-- WAF (path traversal, SQLi, XSS)
-- SSRF / `SafeDialContext`
-- Bypass tokens
-- CSRF en handlers HTTP
-- Autenticación por token (path, query, header, Basic Auth)
+| Comando | Qué hace |
+|---------|----------|
+| `make test` | **Puerta principal**: unitarios rápidos (`-short`) + suite completa con **gate de cobertura** por umbrales |
+| `make test-unit` | Suite en modo `-short` (sin integración pesada: backends/Argon2) |
+| `make test-integration` | Suite completa in-process (DB, proxy, auth) |
+| `make test-contract` | Solo matrices de contrato y caracterización (red de seguridad de refactorizaciones) |
+| `make test-cover` | Suite completa + perfil de cobertura + gate (`scripts/cover_gate.sh`) |
+| `make test-race` | Detector de race conditions |
+| `make test-e2e` | E2E contra el **binario real** (`-tags e2e`): setup→login→admin→proxy, geobloqueo, CLI, graceful shutdown |
+| `make test-smoke` | Subconjunto E2E rápido (smoke + CLI) |
+| `make test-fuzz` | Fuzzing nativo de Go (WAF, parsers) con budget de tiempo |
+| `make bench` | Benchmarks de los caminos calientes |
+| `make ci` | Exactamente lo que ejecuta CI: test + race + e2e + audit |
 
-```bash
-make test           # go test -v ./...
-make test-race      # go test -race -v ./...
-```
+**Gate de cobertura**: global ≥70% y por paquete (auth/db/handlers/security ≥83–85%,
+`cmd/` excluido porque lo cubre el e2e) — umbrales en `scripts/cover_gate.sh`;
+si un porcentaje baja, `make test` falla.
+
+**Áreas cubiertas**: cifrado AES-GCM y Argon2id (incl. compatibilidad de hashes
+legacy), SQLite y migraciones de esquema, Fail2Ban, WAF, SSRF, bypass tokens,
+CSRF, app tokens, **geobloqueo GeoIP**, matriz de routing/autorización (23
+casos), contrato de las **12 acciones del panel**, contrato dual del proxy
+(saneo de credenciales, cookies y mensajes 404), login/2FA/invitaciones con
+**anti-replay TOTP**, ciclo de sesiones, y E2E del binario real (incl.
+apagado ordenado con SIGTERM).
 
 ---
 
