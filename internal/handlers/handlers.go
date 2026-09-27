@@ -60,7 +60,12 @@ var (
 	}
 )
 
-const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; report-uri /api/csp-report"
+const DefaultCSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https://cdn.simpleicons.org; connect-src 'self' https://wttr.in; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; form-action 'self'; report-uri /api/csp-report"
+
+// SetupCSP es una versión relajada del CSP para la página de instalación.
+// Permite form-action explícitamente y no incluye connect-src/restrictiones
+// innecesarias para el wizard inicial.
+const SetupCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; report-uri /api/csp-report"
 
 func sessionHash(rawToken string) string {
 	h := sha256.Sum256([]byte(rawToken))
@@ -866,31 +871,35 @@ func HandleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 		user := r.FormValue("user")
 		pass := r.FormValue("pass")
-		if len(pass) < 12 {
-			Tmpls.ExecuteTemplate(w, "setup.html", "La contraseña del administrador debe tener al menos 12 caracteres")
+		if len(pass) < 8 {
+			Tmpls.ExecuteTemplate(w, "setup.html", "La contraseña del administrador debe tener al menos 8 caracteres")
 			return
 		}
-		if user != "" && pass != "" {
-			hash := auth.HashPassword(pass)
-			rawSecret := auth.GenerateTOTPSecret()
-			encryptedSecret, _ := auth.Encrypt(rawSecret)
-			Mu.Lock()
-			if !NeedsSetup {
-				Mu.Unlock()
-				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
-				return
-			}
-			_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, encryptedSecret)
-			if err == nil {
-				db.LogEvent(fmt.Sprintf("%s Instalación completada. Administrador original creado.", db.PrefixOK), "Sistema")
-				NeedsSetup = false
-			}
-			Mu.Unlock()
-			if err == nil {
-				http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
-				return
-			}
+		if user == "" {
+			Tmpls.ExecuteTemplate(w, "setup.html", "El nombre de usuario no puede estar vacío")
+			return
 		}
+		hash := auth.HashPassword(pass)
+		rawSecret := auth.GenerateTOTPSecret()
+		encryptedSecret, _ := auth.Encrypt(rawSecret)
+		Mu.Lock()
+		if !NeedsSetup {
+			Mu.Unlock()
+			http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+			return
+		}
+		_, err := db.DB.Exec("INSERT INTO users (username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, 1, 0)", user, hash, encryptedSecret)
+		if err != nil {
+			Mu.Unlock()
+			log.Printf("%s Error creando administrador durante instalación: %v", db.PrefixERR, err)
+			Tmpls.ExecuteTemplate(w, "setup.html", "Error interno al crear la cuenta. Reintenta.")
+			return
+		}
+		db.LogEvent(fmt.Sprintf("%s Instalación completada. Administrador original creado.", db.PrefixOK), "Sistema")
+		NeedsSetup = false
+		Mu.Unlock()
+		http.Redirect(w, r, "/REGIO-login", http.StatusSeeOther)
+		return
 	}
 	Tmpls.ExecuteTemplate(w, "setup.html", nil)
 }
@@ -1163,9 +1172,14 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 
 	Mu.Lock()
 	customCSP := Config.CSPs[normalizeHost(r.Host)]
+	isSetupPage := NeedsSetup && r.URL.Path == "/setup"
 	Mu.Unlock()
 
-	if normalizeHost(r.Host) == AdminDomain {
+	// La página de instalación usa un CSP relajado para permitir recursos
+	// necesarios durante el wizard inicial.
+	if isSetupPage {
+		customCSP = SetupCSP
+	} else if normalizeHost(r.Host) == AdminDomain {
 		// El admin necesita unsafe-eval para qrcode.js
 		if customCSP != "" {
 			if !strings.Contains(customCSP, "'unsafe-eval'") {
