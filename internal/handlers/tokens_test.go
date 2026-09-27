@@ -15,6 +15,12 @@ import (
 )
 
 func TestMainHandlerTokens(t *testing.T) {
+	if testing.Short() {
+		t.Skip("modo -short: test de integración (backend/Argon2)")
+	}
+	isolateState(t)
+	cleanUsers(t)
+
 	// 1. Configuración de prueba
 	db.InitDB()
 
@@ -134,9 +140,8 @@ func TestMainHandlerTokens(t *testing.T) {
 
 // TestRequestBodySizeLimit verifica que cuerpos de request grandes son rechazados (A03).
 func TestRequestBodySizeLimit(t *testing.T) {
+	isolateState(t)
 	db.InitDB()
-	AdminDomain = "admin.test"
-	NeedsSetup = false
 
 	t.Run("CSP report con body grande es rechazado", func(t *testing.T) {
 		largeBody := strings.Repeat("A", 20*1024) // 20KB
@@ -153,6 +158,10 @@ func TestRequestBodySizeLimit(t *testing.T) {
 }
 
 func TestSecurityAttacks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("modo -short: test de integración (backend/Argon2)")
+	}
+	isolateState(t)
 	db.InitDB()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

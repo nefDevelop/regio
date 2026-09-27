@@ -1,6 +1,7 @@
 package security
 
 import (
+	"database/sql"
 	"regio/internal/db"
 	"sync"
 	"time"
@@ -89,9 +90,19 @@ func loadFromDB(ip string, ventana time.Time) {
 
 func persistIP(ip string, hasta time.Time) {
 	ventana := hasta.Add(-ventanaTiempo)
-	// Limpiar entradas antiguas y guardar las actuales
+	// Limpiar entradas antiguas (fuera de la ventana)
 	db.DB.Exec("DELETE FROM rate_limits WHERE ip = ? AND timestamp < ?", ip, ventana)
+
+	// Fix deuda #5: solo insertar timestamps nuevos — los anteriores ya están
+	// en DB y el índice único idx_rate_limits_unique hace el resto (antes se
+	// reinsertaba la lista completa en cada persistencia: O(n²) y duplicados).
+	var maxTs sql.NullTime
+	db.DB.QueryRow("SELECT MAX(timestamp) FROM rate_limits WHERE ip = ?", ip).Scan(&maxTs)
+
 	for _, t := range peticionesMem[ip] {
+		if maxTs.Valid && !t.After(maxTs.Time) {
+			continue
+		}
 		db.DB.Exec("INSERT OR IGNORE INTO rate_limits (ip, timestamp) VALUES (?, ?)", ip, t)
 	}
 }

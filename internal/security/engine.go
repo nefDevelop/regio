@@ -8,6 +8,11 @@ import (
 
 // SecurityEngine es el middleware principal que ejecuta todas las protecciones.
 func SecurityEngine(ip string, r *http.Request) error {
+	// 0. Filtrado geográfico por país (GeoIP)
+	if err := CheckGeoPolicy(ip, r.Host); err != nil {
+		return err
+	}
+
 	// 1. Verificar bloqueo por IP (Fail2Ban)
 	if blocked, reason := IsIPBlocked(ip); blocked {
 		return fmt.Errorf("IP bloqueada: %s", reason)

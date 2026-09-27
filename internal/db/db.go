@@ -3,10 +3,12 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,27 +24,34 @@ var (
 	lastLogTime = make(map[string]time.Time)
 )
 
-// safeAlter ejecuta ALTER TABLE solo si la columna no existe.
-func safeAlter(sql, table, column string) {
+// safeAlter ejecuta ALTER TABLE solo si la columna no existe, sobre el handle indicado.
+func safeAlter(database *sql.DB, ddl, table, column string) {
 	var found int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?", table, column).Scan(&found)
+	database.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?", table, column).Scan(&found)
 	if found == 0 {
-		DB.Exec(sql)
+		database.Exec(ddl)
 	}
 }
 
-func InitDB() {
-	var err error
+// resolveDBPath devuelve la ruta de la base de datos (REGIO_DB_PATH o el
+// default ./data/REGIO.db) creando su directorio si hace falta.
+func resolveDBPath() string {
 	dbPath := os.Getenv("REGIO_DB_PATH")
 	if dbPath == "" {
 		dbPath = "./data/REGIO.db"
 		_ = os.MkdirAll("./data", 0700)
 	} else if dir := filepath.Dir(dbPath); dir != "." {
-		_ = os.MkdirAll(dir, 0700)
+		_ = os.MkdirAll(dir, 0700) // #nosec G703 — REGIO_DB_PATH es configuración del operador (env)
 	}
+	return dbPath
+}
+
+// Open crea si hace falta el fichero de la BD (permisos 0600), abre la
+// conexión SQLite y aplica los pragmas de seguridad/rendimiento.
+func Open(dbPath string) (*sql.DB, error) {
 	// Si el archivo no existe, lo creamos vacío para establecer permisos antes de abrirlo
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		f, _ := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0600)
+		f, _ := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0600) // #nosec G304 — REGIO_DB_PATH es configuración del operador (env)
 		if f != nil {
 			f.Close()
 		}
@@ -51,17 +60,23 @@ func InitDB() {
 		_ = os.Chmod(dbPath, 0600)
 	}
 
-	DB, err = sql.Open("sqlite", dbPath)
+	database, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		log.Fatal("Error abriendo DB:", err)
+		return nil, err
 	}
 
 	// Pragmas de seguridad y rendimiento
-	DB.Exec("PRAGMA journal_mode=WAL")
-	DB.Exec("PRAGMA busy_timeout=5000")
-	DB.Exec("PRAGMA foreign_keys=ON")
+	database.Exec("PRAGMA journal_mode=WAL")
+	database.Exec("PRAGMA busy_timeout=5000")
+	database.Exec("PRAGMA foreign_keys=ON")
+	return database, nil
+}
 
-	createTable := `
+// Migrate crea el esquema completo (tablas, columnas e índices) de forma
+// idempotente. Devuelve error en lugar de abortar, para poder testear las
+// rutas de fallo sin matar el proceso (extracción R4 de InitDB).
+func Migrate(database *sql.DB) error {
+	usersDDL := `
 	CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT UNIQUE,
@@ -69,32 +84,33 @@ func InitDB() {
 		totp_secret TEXT,
 		invite_token TEXT,
 		is_admin BOOLEAN DEFAULT 0,
-		totp_active BOOLEAN DEFAULT 0
+		totp_active BOOLEAN DEFAULT 0,
+		totp_last_epoch INTEGER
 	);`
-	_, err = DB.Exec(createTable)
-	if err != nil {
-		log.Fatal("Error creando tabla users:", err)
+	if _, err := database.Exec(usersDDL); err != nil {
+		return fmt.Errorf("creando tabla users: %w", err)
 	}
 
 	// Migraciones: añadir columnas faltantes sin errores si ya existen
-	safeAlter("ALTER TABLE users ADD COLUMN invite_token TEXT;", "users", "invite_token")
-	safeAlter("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;", "users", "is_admin")
-	safeAlter("ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;", "users", "totp_active")
-	DB.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT, performer TEXT);")
-	safeAlter("ALTER TABLE events ADD COLUMN performer TEXT;", "events", "performer")
+	safeAlter(database, "ALTER TABLE users ADD COLUMN invite_token TEXT;", "users", "invite_token")
+	safeAlter(database, "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;", "users", "is_admin")
+	safeAlter(database, "ALTER TABLE users ADD COLUMN totp_active BOOLEAN DEFAULT 0;", "users", "totp_active")
+	// Mejora A2: último epoch TOTP aceptado (anti-replay); NULL = sin límite
+	safeAlter(database, "ALTER TABLE users ADD COLUMN totp_last_epoch INTEGER;", "users", "totp_last_epoch")
+	database.Exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, message TEXT, performer TEXT);")
+	safeAlter(database, "ALTER TABLE events ADD COLUMN performer TEXT;", "events", "performer")
 
-	createBannedTable := `
+	bannedDDL := `
 	CREATE TABLE IF NOT EXISTS banned_ips (
 		ip TEXT PRIMARY KEY,
 		hasta DATETIME,
 		razon TEXT
 	);`
-	_, err = DB.Exec(createBannedTable)
-	if err != nil {
-		log.Fatal("Error creando tabla banned_ips:", err)
+	if _, err := database.Exec(bannedDDL); err != nil {
+		return fmt.Errorf("creando tabla banned_ips: %w", err)
 	}
 
-	createSessionsTable := `
+	sessionsDDL := `
 	CREATE TABLE IF NOT EXISTS sessions (
 		token TEXT PRIMARY KEY,
 		user_id INTEGER,
@@ -105,13 +121,13 @@ func InitDB() {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);`
-	_, err = DB.Exec(createSessionsTable)
-	if err != nil {
-		log.Fatal("Error creando tabla sessions:", err)
+	if _, err := database.Exec(sessionsDDL); err != nil {
+		return fmt.Errorf("creando tabla sessions: %w", err)
 	}
-	safeAlter("ALTER TABLE sessions ADD COLUMN csrf_token TEXT;", "sessions", "csrf_token")
+	safeAlter(database, "ALTER TABLE sessions ADD COLUMN csrf_token TEXT;", "sessions", "csrf_token")
 
-	createTokensTable := `
+	// #nosec G101 — FP: DDL de SQL (columnas tipo token_hash), no credenciales
+	tokensDDL := `
 	CREATE TABLE IF NOT EXISTS app_tokens (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER,
@@ -122,28 +138,33 @@ func InitDB() {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);`
-	_, err = DB.Exec(createTokensTable)
-	if err != nil {
-		log.Fatal("Error creando tabla app_tokens:", err)
+	if _, err := database.Exec(tokensDDL); err != nil {
+		return fmt.Errorf("creando tabla app_tokens: %w", err)
 	}
 
 	// Nueva tabla de servicios (Configuración en DB)
-	createServicesTable := `
+	servicesDDL := `
 	CREATE TABLE IF NOT EXISTS servicios (
 		host TEXT PRIMARY KEY,
 		target TEXT NOT NULL,
 		is_public BOOLEAN DEFAULT 0,
 		bypass_header TEXT DEFAULT '',
-		csp TEXT DEFAULT ''
+		csp TEXT DEFAULT '',
+		geo_mode TEXT DEFAULT '',
+		geo_countries TEXT DEFAULT ''
 	);`
-	_, err = DB.Exec(createServicesTable)
-	if err != nil {
-		log.Fatal("Error creando tabla servicios:", err)
+	if _, err := database.Exec(servicesDDL); err != nil {
+		return fmt.Errorf("creando tabla servicios: %w", err)
 	}
-	safeAlter("ALTER TABLE servicios ADD COLUMN csp TEXT DEFAULT '';", "servicios", "csp")
+	safeAlter(database, "ALTER TABLE servicios ADD COLUMN csp TEXT DEFAULT '';", "servicios", "csp")
+	safeAlter(database, "ALTER TABLE servicios ADD COLUMN geo_mode TEXT DEFAULT '';", "servicios", "geo_mode")
+	safeAlter(database, "ALTER TABLE servicios ADD COLUMN geo_countries TEXT DEFAULT '';", "servicios", "geo_countries")
+
+	// Ajustes globales (política geográfica, etc.) con override sobre variables de entorno
+	database.Exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);")
 
 	// Nueva tabla de reportes CSP
-	createCSPReportsTable := `
+	cspDDL := `
 	CREATE TABLE IF NOT EXISTS csp_reports (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		host TEXT,
@@ -152,36 +173,56 @@ func InitDB() {
 		original_policy TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
-	_, err = DB.Exec(createCSPReportsTable)
-	if err != nil {
-		log.Fatal("Error creando tabla csp_reports:", err)
+	if _, err := database.Exec(cspDDL); err != nil {
+		return fmt.Errorf("creando tabla csp_reports: %w", err)
 	}
 
 	// Nueva tabla de API Keys para Bypass
-	createBypassKeysTable := `
+	// #nosec G101 — FP: DDL de SQL (columnas tipo token), no credenciales
+	bypassDDL := `
 	CREATE TABLE IF NOT EXISTS bypass_keys (
 		token TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		host TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
-	_, err = DB.Exec(createBypassKeysTable)
-	if err != nil {
-		log.Fatal("Error creando tabla bypass_keys:", err)
+	if _, err := database.Exec(bypassDDL); err != nil {
+		return fmt.Errorf("creando tabla bypass_keys: %w", err)
 	}
-	safeAlter("ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0", "bypass_keys", "migrated")
+	safeAlter(database, "ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0", "bypass_keys", "migrated")
 
 	// Tabla para rate limiting persistente
-	createRateLimitsTable := `
+	rateDDL := `
 	CREATE TABLE IF NOT EXISTS rate_limits (
 		ip TEXT NOT NULL,
 		timestamp DATETIME NOT NULL
 	);`
-	_, err = DB.Exec(createRateLimitsTable)
-	if err != nil {
-		log.Fatal("Error creando tabla rate_limits:", err)
+	if _, err := database.Exec(rateDDL); err != nil {
+		return fmt.Errorf("creando tabla rate_limits: %w", err)
 	}
-	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
+	database.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
+
+	// Fix deuda #5: el histórico permitía filas duplicadas (ip,timestamp) —
+	// INSERT OR IGNORE no deduplicaba sin restricción única, lo que inflaba el
+	// recuento tras un reinicio (bloqueos prematuros) y hacía la persistencia
+	// O(n²). Se deduplica y se garantiza unicidad para que OR IGNORE surta efecto.
+	database.Exec("DELETE FROM rate_limits WHERE rowid NOT IN (SELECT MIN(rowid) FROM rate_limits GROUP BY ip, timestamp)")
+	database.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_limits_unique ON rate_limits(ip, timestamp)")
+	return nil
+}
+
+// InitDB orquesta resolveDBPath + Open + Migrate sobre la variable global DB.
+// Conserva la semántica original: aborta el proceso (log.Fatal) ante fallos.
+func InitDB() {
+	dbPath := resolveDBPath()
+	database, err := Open(dbPath)
+	if err != nil {
+		log.Fatal("Error abriendo DB:", err)
+	}
+	DB = database
+	if err := Migrate(DB); err != nil {
+		log.Fatal("Error migrando DB:", err)
+	}
 }
 
 func CheckNeedsSetup() bool {
@@ -202,14 +243,19 @@ func SaveConfig(config models.Config) error {
 	// Limpiar tabla actual para reemplazo total (como hacía el JSON)
 	_, _ = tx.Exec("DELETE FROM servicios")
 
-	stmt, _ := tx.Prepare("INSERT INTO servicios (host, target, is_public, bypass_header, csp) VALUES (?, ?, ?, ?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO servicios (host, target, is_public, bypass_header, csp, geo_mode, geo_countries) VALUES (?, ?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
 	defer stmt.Close()
 
 	for host, target := range config.Servicios {
 		isPublic := config.Publicos[host]
 		bypass := config.BypassHeaders[host]
 		csp := config.CSPs[host]
-		_, err = stmt.Exec(host, target, isPublic, bypass, csp)
+		geoMode := config.GeoModes[host]
+		geoCountries := config.GeoCountries[host]
+		_, err = stmt.Exec(host, target, isPublic, bypass, csp, geoMode, geoCountries)
 		if err != nil {
 			return err
 		}
@@ -225,6 +271,8 @@ func LoadConfig() (models.Config, error) {
 		Publicos:      make(map[string]bool),
 		BypassHeaders: make(map[string]string),
 		CSPs:          make(map[string]string),
+		GeoModes:      make(map[string]string),
+		GeoCountries:  make(map[string]string),
 	}
 
 	// 1. Verificar si existe config.json para migración
@@ -245,31 +293,64 @@ func LoadConfig() (models.Config, error) {
 	}
 
 	// 2. Cargar desde DB
-	rows, err := DB.Query("SELECT host, target, is_public, bypass_header, COALESCE(csp, '') FROM servicios")
+	rows, err := DB.Query("SELECT host, target, is_public, bypass_header, COALESCE(csp, ''), COALESCE(geo_mode, ''), COALESCE(geo_countries, '') FROM servicios")
 	if err != nil {
 		return config, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var host, target, bypass, csp string
+		var host, target, bypass, csp, geoMode, geoCountries string
 		var isPublic bool
-		if err := rows.Scan(&host, &target, &isPublic, &bypass, &csp); err == nil {
+		if err := rows.Scan(&host, &target, &isPublic, &bypass, &csp, &geoMode, &geoCountries); err == nil {
 			config.Servicios[host] = target
 			config.Publicos[host] = isPublic
 			if bypass != "" {
 				config.BypassHeaders[host] = bypass
 			}
 			config.CSPs[host] = csp
+			if geoMode != "" {
+				config.GeoModes[host] = geoMode
+			}
+			if geoCountries != "" {
+				config.GeoCountries[host] = geoCountries
+			}
 		}
 	}
 
 	return config, nil
 }
 
+// GetSetting lee un ajuste global de la tabla settings. Devuelve false si no existe.
+func GetSetting(key string) (string, bool) {
+	if DB == nil {
+		return "", false
+	}
+	var value string
+	if err := DB.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value); err != nil {
+		return "", false
+	}
+	return value, true
+}
+
+// SetSetting guarda (o sobrescribe) un ajuste global en la tabla settings.
+func SetSetting(key, value string) error {
+	if DB == nil {
+		return fmt.Errorf("base de datos no inicializada")
+	}
+	_, err := DB.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+	return err
+}
+
 // Métodos individuales para el CLI
 func AddService(host, target string, isPublic bool, bypass string, csp string) error {
-	_, err := DB.Exec("INSERT OR REPLACE INTO servicios (host, target, is_public, bypass_header, csp) VALUES (?, ?, ?, ?, ?)", host, target, isPublic, bypass, csp)
+	// ON CONFLICT conserva las columnas geo (política por país) ya configuradas desde el panel
+	_, err := DB.Exec(`INSERT INTO servicios (host, target, is_public, bypass_header, csp) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(host) DO UPDATE SET
+			target = excluded.target,
+			is_public = excluded.is_public,
+			bypass_header = excluded.bypass_header,
+			csp = excluded.csp`, host, target, isPublic, bypass, csp)
 	return err
 }
 
@@ -299,6 +380,22 @@ func GetRecentCSPReports(limit int) []models.CSPReport {
 		reports = append(reports, r)
 	}
 	return reports
+}
+
+// PurgeCSPReports limita la tabla de reportes CSP: borra entradas de más de
+// 30 días y mantiene como tope las 5000 más recientes (eliminando 500).
+// Fix S2: la tabla no tenía NINGÚN límite y el endpoint de ingesta era
+// (antes) un endpoint sin autenticar ni rate limit → agotamiento de disco.
+func PurgeCSPReports() {
+	if DB == nil {
+		return
+	}
+	DB.Exec("DELETE FROM csp_reports WHERE created_at < datetime('now', '-30 days')")
+	var count int
+	DB.QueryRow("SELECT COUNT(*) FROM csp_reports").Scan(&count)
+	if count > 5000 {
+		DB.Exec("DELETE FROM csp_reports WHERE id IN (SELECT id FROM csp_reports ORDER BY id ASC LIMIT 500)")
+	}
 }
 
 // Funciones para Gestión de Bypass Keys
@@ -337,15 +434,31 @@ const (
 	PrefixREGIO = ColorPurple + "[reGIO]" + ColorReset
 )
 
+// newlineReplacer neutraliza saltos de línea en logs (log injection).
+var newlineReplacer = strings.NewReplacer("\r", " ", "\n", " ")
+
+// SanitizeLog elimina los saltos de línea (CR/LF) de un string procedente de
+// la entrada de usuario para impedir que inyecte líneas falsas en los logs
+// (fix deuda #4). Solo hace trabajo si hay CR/LF: apto por petición.
+func SanitizeLog(str string) string {
+	if strings.ContainsAny(str, "\r\n") {
+		return newlineReplacer.Replace(str)
+	}
+	return str
+}
+
 func stripANSI(str string) string {
 	const ansi = "[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]"
 	re := regexp.MustCompile(ansi)
-	return re.ReplaceAllString(str, "")
+	return SanitizeLog(re.ReplaceAllString(str, ""))
 }
 
 func LogEvent(message string, performer string) {
 	cleanMessage := stripANSI(message)
 	
+	// Sanitizar el performer (puede ser un username con saltos de línea)
+	performer = SanitizeLog(performer)
+
 	// Protección contra log-flooding: no registrar el mismo mensaje del mismo actor más de una vez por segundo.
 	logKey := performer + ":" + cleanMessage
 	logMu.Lock()

@@ -331,6 +331,8 @@
                   Gestionar
                 </button>
                 <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
+                <input type="hidden" id="geo-mode-hidden-{{.Host}}" value="{{index $.Config.GeoModes .Host}}">
+                <input type="hidden" id="geo-countries-hidden-{{.Host}}" value="{{index $.Config.GeoCountries .Host}}">
               </td>
               <td>
                 <div class="view-mode" style="display: flex; gap: 8px">
@@ -409,6 +411,19 @@
           <div class="input-group">
             <label>Identidad</label>
             <input type="text" name="bypass_name" placeholder="Ej. Git" />
+          </div>
+
+          <div class="input-group">
+            <label>Filtrado por país</label>
+            <div style="display: flex; gap: 8px">
+              <select name="geo_mode" style="width: 130px" title="Hereda la política global si se deja en Global">
+                <option value="">Global</option>
+                <option value="off">Abierto</option>
+                <option value="allow">Solo lista</option>
+                <option value="deny">Bloquear</option>
+              </select>
+              <input type="text" name="geo_countries" placeholder="ES, FR" autocomplete="off" style="flex: 1; min-width: 0" />
+            </div>
           </div>
 
           <div class="input-group">
@@ -605,6 +620,91 @@
     {{end}}
 
     <div class="section">
+      <h2 style="display: flex; align-items: center; gap: 12px; font-size: 18px; margin-bottom: 24px; border-bottom: 1px solid var(--surface-border); padding-bottom: 12px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        Filtrado por País (GeoIP)
+      </h2>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px">
+        <div>
+          <h3>Política Global</h3>
+          <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+            <input type="hidden" name="accion" value="set_geo_policy" />
+
+            <div class="input-group">
+              <label>Modo</label>
+              <select name="geo_mode" style="width: 100%">
+                <option value="off" {{if eq .GeoPolicy.Mode "off"}}selected{{end}}>Desactivado (sin filtrado)</option>
+                <option value="allow" {{if eq .GeoPolicy.Mode "allow"}}selected{{end}}>Solo países permitidos (lista blanca)</option>
+                <option value="deny" {{if eq .GeoPolicy.Mode "deny"}}selected{{end}}>Países bloqueados (lista negra)</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label>Países (ISO 3166-1, separados por coma)</label>
+              <input type="text" name="geo_countries" value="{{.GeoPolicy.Countries}}" placeholder="Ej: ES, FR" autocomplete="off" />
+            </div>
+
+            <div class="input-group">
+              <label>Si no se puede determinar el país (BD ausente, IP desconocida)</label>
+              <select name="geo_fail_mode" style="width: 100%">
+                <option value="open" {{if eq .GeoPolicy.FailMode "open"}}selected{{end}}>Permitir (fail-open, recomendado)</option>
+                <option value="closed" {{if eq .GeoPolicy.FailMode "closed"}}selected{{end}}>Bloquear (fail-closed, estricto)</option>
+              </select>
+            </div>
+
+            <button class="btn-success" style="height: 44px; padding: 0 24px">Guardar Política</button>
+          </form>
+
+          <p style="font-size: 12px; color: #64748b; line-height: 1.6; margin-top: 16px">
+            <strong>allow</strong>: solo pasan los países de la lista (el resto, incluidos desconocidos, se bloquea según el modo de fallo).
+            <strong>deny</strong>: todos pasan salvo los países de la lista. Las IPs locales/privadas nunca se bloquean.
+            Cada servicio puede definir su propia política desde «Gestionar».
+          </p>
+        </div>
+
+        <div>
+          <h3>Estado de la Base de Datos GeoIP</h3>
+          <table>
+            <tbody>
+              <tr>
+                <td style="color: #94a3b8">Ruta</td>
+                <td style="font-family: ui-monospace, monospace; font-size: 12px">{{.GeoIP.Path}}</td>
+              </tr>
+              <tr>
+                <td style="color: #94a3b8">Estado</td>
+                <td>
+                  {{if .GeoIP.Loaded}}
+                  <span class="badge" style="color: #4ade80; background: rgba(74, 222, 128, 0.1)">CARGADA</span>
+                  {{else}}
+                  <span class="badge" style="color: #ef4444; background: rgba(239, 68, 68, 0.1)">NO CARGADA</span>
+                  {{end}}
+                </td>
+              </tr>
+              <tr>
+                <td style="color: #94a3b8">Actualizada</td>
+                <td>{{if .GeoIP.ModTime}}{{.GeoIP.ModTime}}{{else}}—{{end}}</td>
+              </tr>
+              <tr>
+                <td style="color: #94a3b8">Origen de la política</td>
+                <td>{{if eq .GeoPolicy.Source "db"}}Panel admin{{else}}Variables de entorno{{end}}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size: 12px; color: #64748b; line-height: 1.6; margin-top: 12px">
+            Descarga <code>GeoLite2-Country.mmdb</code> (MaxMind) o <code>dbip-country-lite.mmdb</code> (DB-IP) y colócala en la ruta
+            anterior. La BD se recarga automáticamente cada 10 minutos si el fichero cambia.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Registro de Eventos</h2>
       <div
         style="
@@ -714,6 +814,34 @@
             </div>
           </div>
 
+          <!-- Bloque 1b: Filtrado por país -->
+          <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h4 style="margin-top: 0; color: #818cf8; margin-bottom: 12px;">Filtrado por País</h4>
+            <p style="font-size: 13px; color: #94a3b8; margin-bottom: 12px;">
+              Restringe el acceso a este servicio por país. «Heredar global» aplica la política general del panel.
+            </p>
+
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end">
+              <div class="input-group" style="flex: 1; min-width: 200px; margin: 0">
+                <label>Política del servicio</label>
+                <select id="modal-geo-mode" style="width: 100%">
+                  <option value="">Heredar global</option>
+                  <option value="off">Abierto (sin filtro)</option>
+                  <option value="allow">Solo países de la lista</option>
+                  <option value="deny">Bloquear países de la lista</option>
+                </select>
+              </div>
+              <div class="input-group" style="flex: 1; min-width: 200px; margin: 0">
+                <label>Países (ej: ES, FR)</label>
+                <input type="text" id="modal-geo-countries" placeholder="ES, FR" autocomplete="off" />
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
+              <button class="btn-primary" onclick="saveGeoChanges()" style="height: 44px; padding: 0 24px">Guardar País</button>
+            </div>
+          </div>
+
           <!-- Bloque 2: Bypass Tokens -->
           <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
             <h4 style="margin-top: 0; color: #fbbf24; margin-bottom: 12px;">Tokens de Bypass Activos</h4>
@@ -768,6 +896,12 @@
         currentServiceTarget = target;
         document.getElementById("modal-host").innerText = "Servicio: " + host;
 
+        // Prefill de la política geográfica del servicio
+        var geoModeInput = document.getElementById("geo-mode-hidden-" + host);
+        var geoCountriesInput = document.getElementById("geo-countries-hidden-" + host);
+        document.getElementById("modal-geo-mode").value = geoModeInput ? geoModeInput.value : "";
+        document.getElementById("modal-geo-countries").value = geoCountriesInput ? geoCountriesInput.value : "";
+
         // Setup CSP form hidden inputs
         var hiddenInput = document.getElementById("csp-hidden-" + host);
         var rawCsp = (hiddenInput ? hiddenInput.value : "") || "default-src 'self'";
@@ -805,18 +939,29 @@
             return r.json();
           })
           .then(data => {
-            // Llenar Eventos
+            // Llenar Eventos — DOM seguro (fix S1): textContent/createElement,
+            // nunca innerHTML con datos (Message/Performers llevan entrada de usuario)
             var evContainer = document.getElementById("modal-events-log");
             if (!data.events || data.events.length === 0) {
-              evContainer.innerHTML = '<div style="color: #71717a">No hay eventos recientes para este servicio.</div>';
+              evContainer.textContent = "No hay eventos recientes para este servicio.";
             } else {
-              evContainer.innerHTML = '';
+              evContainer.textContent = "";
               data.events.forEach(function(e) {
                 var d = document.createElement("div");
                 d.className = "event-log-entry";
                 d.style.marginBottom = "6px";
                 d.style.lineHeight = "1.4";
-                d.innerHTML = '<span style="color: #71717a">' + e.Timestamp + '</span> <span style="color: #818cf8; font-weight: bold">[' + e.Performer + ']</span> ' + e.Message;
+                var ts = document.createElement("span");
+                ts.style.color = "#71717a";
+                ts.textContent = e.Timestamp;
+                var pf = document.createElement("span");
+                pf.style.color = "#818cf8";
+                pf.style.fontWeight = "bold";
+                pf.textContent = "[" + e.Performer + "]";
+                d.appendChild(ts);
+                d.appendChild(document.createTextNode(" "));
+                d.appendChild(pf);
+                d.appendChild(document.createTextNode(" " + e.Message));
                 evContainer.appendChild(d);
               });
             }
@@ -825,18 +970,52 @@
             if (!data.csp_reports || data.csp_reports.length === 0) {
               cspBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #71717a">No hay alertas.</td></tr>';
             } else {
-              cspBody.innerHTML = '';
-              data.csp_reports.forEach(function(r) {
+              // DOM seguro (fix S1): el blocked-uri provenía de un endpoint
+              // sin autenticación; el onclick-string era inyectable.
+              cspBody.textContent = "";
+              data.csp_reports.forEach(function(rep) {
                 var tr = document.createElement("tr");
-                var actionBtn = '';
-                if (r.BlockedURI !== "inline/eval/other") {
-                  actionBtn = '<button class="btn-success" style="height: 24px; padding: 0 8px; font-size: 10px;" onclick="quickAllow(\'' + host + '\', \'' + r.BlockedURI + '\')">Permitir</button>';
+
+                var tdUri = document.createElement("td");
+                tdUri.style.wordBreak = "break-all";
+                tdUri.style.maxWidth = "250px";
+                tdUri.style.fontFamily = "monospace";
+                tdUri.style.fontSize = "11px";
+                tdUri.title = rep.BlockedURI;
+                tdUri.textContent = rep.BlockedURI;
+
+                var tdDir = document.createElement("td");
+                var badge = document.createElement("span");
+                badge.className = "badge";
+                badge.style.background = "rgba(239, 68, 68, 0.1)";
+                badge.style.color = "#ef4444";
+                badge.style.fontSize = "9px";
+                badge.textContent = rep.ViolatedDirective;
+                tdDir.appendChild(badge);
+
+                var tdAct = document.createElement("td");
+                if (rep.BlockedURI !== "inline/eval/other") {
+                  var btn = document.createElement("button");
+                  btn.className = "btn-success";
+                  btn.style.height = "24px";
+                  btn.style.padding = "0 8px";
+                  btn.style.fontSize = "10px";
+                  btn.textContent = "Permitir";
+                  btn.addEventListener("click", function() {
+                    quickAllow(host, rep.BlockedURI);
+                  });
+                  tdAct.appendChild(btn);
                 } else {
-                  actionBtn = '<span style="font-size: 9px; color: #71717a">Manual</span>';
+                  var manual = document.createElement("span");
+                  manual.style.fontSize = "9px";
+                  manual.style.color = "#71717a";
+                  manual.textContent = "Manual";
+                  tdAct.appendChild(manual);
                 }
-                tr.innerHTML = '<td style="word-break: break-all; max-width: 250px; font-family: monospace; font-size: 11px;" title="' + r.BlockedURI + '">' + r.BlockedURI + '</td>' +
-                               '<td><span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; font-size: 9px;">' + r.ViolatedDirective + '</span></td>' +
-                               '<td>' + actionBtn + '</td>';
+
+                tr.appendChild(tdUri);
+                tr.appendChild(tdDir);
+                tr.appendChild(tdAct);
                 cspBody.appendChild(tr);
               });
             }
@@ -853,7 +1032,17 @@
                 li.style.paddingBottom = "8px";
                 li.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
                 var tokenPreview = k.Token.length > 12 ? k.Token.substring(0, 12) + '...' : k.Token;
-                li.innerHTML = '<div style="font-weight: bold; color: #e2e8f0;">' + k.Name + '</div><div style="font-family: monospace; font-size: 11px; color: #94a3b8;">Hash: ' + tokenPreview + '</div>';
+                var nameDiv = document.createElement("div");
+                nameDiv.style.fontWeight = "bold";
+                nameDiv.style.color = "#e2e8f0";
+                nameDiv.textContent = k.Name;
+                var hashDiv = document.createElement("div");
+                hashDiv.style.fontFamily = "monospace";
+                hashDiv.style.fontSize = "11px";
+                hashDiv.style.color = "#94a3b8";
+                hashDiv.textContent = "Hash: " + tokenPreview;
+                li.appendChild(nameDiv);
+                li.appendChild(hashDiv);
                 bpList.appendChild(li);
               });
             }
@@ -883,7 +1072,16 @@
             var item = currentCspItems[index];
             var tag = document.createElement("div");
             tag.className = "csp-tag";
-            tag.innerHTML = "<span>" + item + "</span><span class=\"remove\" onclick=\"removeCspItem(" + index + ")\">×</span>";
+            var label = document.createElement("span");
+            label.textContent = item;
+            var remove = document.createElement("span");
+            remove.className = "remove";
+            remove.textContent = "\u00d7";
+            remove.addEventListener("click", function() {
+              removeCspItem(index);
+            });
+            tag.appendChild(label);
+            tag.appendChild(remove);
             container.appendChild(tag);
           })(i);
         }
@@ -974,6 +1172,25 @@
         var targetInput = row.querySelector("input[name='target']");
         a("target", targetInput ? targetInput.value : "");
         a("csp", newCsp);
+        a("csrf_token", "{{.CSRFToken}}");
+        document.body.appendChild(f);
+        f.submit();
+      }
+
+      function saveGeoChanges() {
+        var f = document.createElement("form");
+        f.method = "POST";
+        var a = function(n, v) {
+          var i = document.createElement("input");
+          i.type = "hidden";
+          i.name = n;
+          i.value = v;
+          f.appendChild(i);
+        };
+        a("accion", "set_service_geo");
+        a("host", currentCspHost);
+        a("geo_mode", document.getElementById("modal-geo-mode").value);
+        a("geo_countries", document.getElementById("modal-geo-countries").value);
         a("csrf_token", "{{.CSRFToken}}");
         document.body.appendChild(f);
         f.submit();

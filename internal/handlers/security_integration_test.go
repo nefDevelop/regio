@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,8 @@ import (
 
 // TestCSRFValidation verifica que las acciones POST requieren token CSRF válido.
 func TestCSRFValidation(t *testing.T) {
+	isolateState(t)
+
 	// Simular una sesión activa
 	testToken := "test-session-hash"
 	Mu.Lock()
@@ -193,8 +196,7 @@ func TestSessionHashConsistency(t *testing.T) {
 
 // TestNoCookiePanic verifica que HandleAdmin y HandleProfile no paniquean sin cookie (C01).
 func TestNoCookiePanic(t *testing.T) {
-	AdminDomain = "admin.test"
-	NeedsSetup = false
+	isolateState(t)
 
 	t.Run("HandleAdmin sin cookie retorna 401", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/admin", nil)
@@ -275,6 +277,9 @@ func TestGetRealIP(t *testing.T) {
 
 // TestPasswordMinimumLength verifica que el mínimo de contraseña es 12 caracteres (B05).
 func TestPasswordMinimumLength(t *testing.T) {
+	isolateState(t)
+	cleanUsers(t)
+
 	t.Run("HandleLogin set_password rechaza <12 chars", func(t *testing.T) {
 		// Crear un usuario sin contraseña (invitación) para llegar al check de longitud
 		inviteToken := "test-invite-token-123"
@@ -302,6 +307,9 @@ func TestPasswordMinimumLength(t *testing.T) {
 
 // TestPasswordMinimumLengthSetup verifica que setup rechaza <12 chars (B05).
 func TestPasswordMinimumLengthSetup(t *testing.T) {
+	isolateState(t)
+	cleanUsers(t)
+
 	Mu.Lock()
 	NeedsSetup = true
 	Mu.Unlock()
@@ -348,9 +356,11 @@ func TestPasswordMinimumLengthSetup(t *testing.T) {
 
 // TestLastAdminProtection verifica que no se pueda eliminar el último admin (B03).
 func TestLastAdminProtection(t *testing.T) {
-	// Asegurar que hay un solo admin diferente de ID 1 en DB
-	db.DB.Exec("DELETE FROM users")
-	db.DB.Exec("INSERT OR REPLACE INTO users (id, username, is_admin) VALUES (2, 'onlyadmin', 1)")
+	isolateState(t)
+	cleanUsers(t)
+
+	// Un solo admin (id=2); el id=1 está reservado y no se puede borrar
+	seedAdminUser(t, 2, "onlyadmin")
 
 	realHash := sessionHash("admin-session-token")
 	Mu.Lock()
@@ -382,12 +392,26 @@ func TestLastAdminProtection(t *testing.T) {
 
 	// No redirige (303) — significa que rechazó la operación
 	if rr.Code == http.StatusSeeOther {
-		t.Errorf("Debería rechazar eliminar último admin, got 303. Cuerpo: %s", rr.Body.String())
+		// Diagnóstico: volcar el estado real de users para depurar orden-dependencias
+		var estado []string
+		rows, err := db.DB.Query("SELECT id, username, is_admin FROM users")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, isAdmin int
+				var username string
+				rows.Scan(&id, &username, &isAdmin)
+				estado = append(estado, fmt.Sprintf("{id:%d user:%s admin:%d}", id, username, isAdmin))
+			}
+		}
+		t.Errorf("Debería rechazar eliminar último admin, got 303. Cuerpo: %s | users=%v", rr.Body.String(), estado)
 	}
 }
 
 // TestCSRFRotation verifica que el token CSRF se rota tras uso exitoso (M06).
 func TestCSRFRotation(t *testing.T) {
+	isolateState(t)
+
 	realHash := sessionHash("rotation-test-token")
 	Mu.Lock()
 	ActiveSessions[realHash] = &models.User{
@@ -452,8 +476,7 @@ func TestCSRFRotation(t *testing.T) {
 
 // TestUnauthenticatedAccess verifica que las rutas protegidas requieren autenticación.
 func TestUnauthenticatedAccess(t *testing.T) {
-	AdminDomain = "admin.test"
-	NeedsSetup = false
+	isolateState(t)
 
 	protectedPaths := []struct {
 		path string
@@ -484,8 +507,7 @@ func TestUnauthenticatedAccess(t *testing.T) {
 
 // TestSecurityHeaders verifica que todos los headers de seguridad están presentes.
 func TestSecurityHeaders(t *testing.T) {
-	AdminDomain = "admin.test"
-	NeedsSetup = false
+	isolateState(t)
 
 	req := httptest.NewRequest("GET", "/REGIO-login", nil)
 	req.Host = "admin.test"
@@ -550,7 +572,7 @@ func TestIsTrustedProxyCIDR(t *testing.T) {
 
 // TestHandleCSPReportContentType verifica que CSP endpoint rechace Content-Type inválido.
 func TestHandleCSPReportContentType(t *testing.T) {
-	AdminDomain = "admin.test"
+	isolateState(t)
 
 	t.Run("Content-Type inválido es rechazado", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(`{}`))

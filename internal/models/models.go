@@ -10,6 +10,8 @@ type Config struct {
 	Publicos      map[string]bool   `json:"publicos"`
 	BypassHeaders map[string]string `json:"bypass_headers"` // Host -> "HeaderName:Value"
 	CSPs          map[string]string `json:"csps"`           // Host -> "CSP String"
+	GeoModes      map[string]string `json:"geo_modes"`      // Host -> "" (hereda global) | off | allow | deny
+	GeoCountries  map[string]string `json:"geo_countries"`  // Host -> "ES, FR"
 }
 
 type Intento struct {

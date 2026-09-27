@@ -36,7 +36,7 @@ func main() {
 	}
 proceed:
 	os.Remove(dbPath)
-	os.MkdirAll("./data", 0755)
+	os.MkdirAll("./data", 0750)
 
 	DB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -103,7 +103,13 @@ func createTables(DB *sql.DB) {
 			target TEXT NOT NULL,
 			is_public BOOLEAN DEFAULT 0,
 			bypass_header TEXT DEFAULT '',
-			csp TEXT DEFAULT ''
+			csp TEXT DEFAULT '',
+			geo_mode TEXT DEFAULT '',
+			geo_countries TEXT DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT
 		)`,
 		`CREATE TABLE IF NOT EXISTS csp_reports (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

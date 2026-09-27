@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"regio/internal/auth"
@@ -35,6 +39,8 @@ func loadConfig() {
 	handlers.Config = config
 	handlers.UpdateAllowedNetworksFromConfig()
 	handlers.Mu.Unlock()
+
+	security.ReplaceHostGeoPolicies(config.GeoModes, config.GeoCountries)
 }
 func handleCLI() {
 	if len(os.Args) < 2 {
@@ -132,6 +138,34 @@ func handleCLI() {
 	}
 }
 
+// shutdownSignals registra las señales de apagado ordenado (mejora B1):
+// SIGINT (Ctrl-C) y SIGTERM (docker stop).
+func shutdownSignals() chan os.Signal {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	return ch
+}
+
+// drainServers drena los servidores tras una señal: deja de aceptar conexiones
+// nuevas, espera a que terminen las peticiones en vuelo (máx 10 s) y recoge
+// los returns de las goroutines de Serve.
+func drainServers(sig os.Signal, servers []*http.Server, errCh chan error, esperados int) {
+	log.Printf("%s Señal %v recibida: drenando conexiones en vuelo (máx 10s)...", db.PrefixINFO, sig)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, srv := range servers {
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("%s Error drenando servidor: %v", db.PrefixWARN, err)
+		}
+	}
+	for i := 0; i < esperados; i++ {
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("%s Error durante el apagado: %v", db.PrefixWARN, err)
+		}
+	}
+	log.Printf("%s Apagado ordenado completado.", db.PrefixOK)
+}
+
 func main() {
 	log.Printf("%s Iniciando reGIO...", db.PrefixREGIO)
 
@@ -166,20 +200,26 @@ func main() {
 	log.Printf("%s Cargando configuración de servicios...", db.PrefixINFO)
 	loadConfig()
 
+	// 4.1 GeoIP: base de datos de países y política geográfica (env + DB)
+	security.InitGeoIP()
+	security.InitGeoPolicy()
+
 	// 5. Manejar comandos CLI (si existen)
 	handleCLI()
 
 	// Rutina de limpieza en segundo plano (IPs bloqueadas, Rate Limiter y Sesiones)
 	go func() {
-	        for {
-	                // Limpieza cada 10 minutos para mayor seguridad y liberación de recursos
-	                time.Sleep(10 * time.Minute)
-	                security.LimpiarBloqueosExpirados()
-	                security.LimpiarRateLimiter()
-	                security.LimpiarIntentosUsuario()
-	                handlers.CleanupSessions()
-	        }
-	}()	// Router Principal
+		for {
+			// Limpieza cada 10 minutos para mayor seguridad y liberación de recursos
+			time.Sleep(10 * time.Minute)
+			security.LimpiarBloqueosExpirados()
+			security.LimpiarRateLimiter()
+			security.LimpiarIntentosUsuario()
+			handlers.CleanupSessions()
+			security.ReloadGeoIPIfChanged()
+			db.PurgeCSPReports()
+		}
+	}() // Router Principal
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "80"
@@ -196,7 +236,7 @@ func main() {
 
 	if tlsCert != "" && tlsKey != "" {
 		// Modo TLS: HTTPS en :443 + redirección HTTP en :80
-		log.Printf("%s reGIO Iniciado con TLS en :%s. Admin en: https://%s/admin", db.PrefixREGIO, portTLS, handlers.AdminDomain)
+		log.Printf("%s reGIO Iniciado con TLS en :%s. Admin en: https://%s/admin", db.PrefixREGIO, portTLS, handlers.AdminDomain) // #nosec G706 — valores de entorno (ADMIN_DOMAIN/PORT)
 
 		// Servidor HTTPS
 		tlsServer := &http.Server{
@@ -206,33 +246,47 @@ func main() {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       120 * time.Second,
 			ReadHeaderTimeout: 5 * time.Second,
+			MaxHeaderBytes:    64 << 10, // Fix S6: límite de cabeceras (default 1MB)
 		}
 
-		// Servidor HTTP: redirige a HTTPS
-		go func() {
-			httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if !reValidHost.MatchString(r.Host) {
-					http.Error(w, "Host inválido", http.StatusBadRequest)
-					return
-				}
-				target := "https://" + r.Host + r.URL.RequestURI()
-				http.Redirect(w, r, target, http.StatusMovedPermanently)
-			})
-			httpServer := &http.Server{
-				Addr:              ":" + port,
-				Handler:           httpHandler,
-				ReadTimeout:       2 * time.Second,
-				WriteTimeout:      2 * time.Second,
-				ReadHeaderTimeout: 1 * time.Second,
+		// Servidor HTTP: redirige a HTTPS (se drena también en el apagado B1)
+		redirectHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !reValidHost.MatchString(r.Host) || !handlers.IsKnownHost(r.Host) {
+				http.Error(w, "Host inválido", http.StatusBadRequest)
+				return
 			}
-			log.Printf("%s Servidor HTTP en :%s redirigiendo a HTTPS", db.PrefixINFO, port)
-			if err := httpServer.ListenAndServe(); err != nil {
+			target := "https://" + r.Host + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 — limitado a hosts conocidos (IsKnownHost); e2e TestE2EHTTPSRedirect
+		})
+		redirectServer := &http.Server{
+			Addr:              ":" + port,
+			Handler:           redirectHandler,
+			ReadTimeout:       2 * time.Second,
+			WriteTimeout:      2 * time.Second,
+			ReadHeaderTimeout: 1 * time.Second,
+			MaxHeaderBytes:    64 << 10, // Fix S6: límite de cabeceras (default 1MB)
+		}
+		go func() {
+			log.Printf("%s Servidor HTTP en :%s redirigiendo a HTTPS", db.PrefixINFO, port) // #nosec G706 — valor de entorno (PORT)
+			if err := redirectServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("%s Servidor HTTP de redirección falló: %v", db.PrefixWARN, err)
 			}
 		}()
 
-		if err := tlsServer.ListenAndServeTLS(tlsCert, tlsKey); err != nil {
-			log.Fatalf("%s ERROR FATAL al iniciar servidor TLS: %v", db.PrefixERR, err)
+		httpsLn, err := net.Listen("tcp", ":"+portTLS)
+		if err != nil {
+			log.Fatalf("%s ERROR FATAL al escuchar en :%s: %v", db.PrefixERR, portTLS, err) // #nosec G706 — valor de entorno (PORT_TLS)
+		}
+		tlsErrCh := make(chan error, 1)
+		go func() { tlsErrCh <- tlsServer.ServeTLS(httpsLn, tlsCert, tlsKey) }()
+
+		select {
+		case err := <-tlsErrCh:
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("%s ERROR FATAL al iniciar servidor TLS: %v", db.PrefixERR, err)
+			}
+		case sig := <-shutdownSignals():
+			drainServers(sig, []*http.Server{tlsServer, redirectServer}, tlsErrCh, 1)
 		}
 	} else {
 		// Modo HTTP estándar (detrás de proxy/tunnel)
@@ -247,19 +301,19 @@ func main() {
 					isHTTPS = r.Header.Get("X-Forwarded-Proto") == "https"
 				}
 				if !isHTTPS {
-					if !reValidHost.MatchString(r.Host) {
+					if !reValidHost.MatchString(r.Host) || !handlers.IsKnownHost(r.Host) {
 						http.Error(w, "Host inválido", http.StatusBadRequest)
 						return
 					}
 					target := "https://" + r.Host + r.URL.RequestURI()
-					http.Redirect(w, r, target, http.StatusMovedPermanently)
+					http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 — limitado a hosts conocidos (IsKnownHost); e2e TestE2EHTTPSRedirect
 					return
 				}
 				originalHandler.ServeHTTP(w, r)
 			})
 		}
 
-		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :%s", db.PrefixREGIO, handlers.AdminDomain, port)
+		log.Printf("%s reGIO Iniciado. Admin en: https://%s/admin. Escuchando en :%s", db.PrefixREGIO, handlers.AdminDomain, port) // #nosec G706 — valores de entorno (ADMIN_DOMAIN/PORT)
 
 		server := &http.Server{
 			Addr:              ":" + port,
@@ -268,11 +322,23 @@ func main() {
 			WriteTimeout:      60 * time.Second,
 			IdleTimeout:       120 * time.Second,
 			ReadHeaderTimeout: 10 * time.Second,
+			MaxHeaderBytes:    64 << 10, // Fix S6: límite de cabeceras (default 1MB)
 		}
 
-		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("%s ERROR FATAL al iniciar el servidor: %v", db.PrefixERR, err)
+		ln, err := net.Listen("tcp", ":"+port)
+		if err != nil {
+			log.Fatalf("%s ERROR FATAL al escuchar en :%s: %v", db.PrefixERR, port, err) // #nosec G706 — valor de entorno (PORT)
+		}
+		errCh := make(chan error, 1)
+		go func() { errCh <- server.Serve(ln) }()
+
+		select {
+		case err := <-errCh:
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("%s ERROR FATAL al iniciar el servidor: %v", db.PrefixERR, err)
+			}
+		case sig := <-shutdownSignals():
+			drainServers(sig, []*http.Server{server}, errCh, 1)
 		}
 	}
 }
-
