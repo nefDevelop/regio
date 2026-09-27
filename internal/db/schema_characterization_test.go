@@ -87,6 +87,9 @@ func TestInitDBSchemaCharacterization(t *testing.T) {
 		"host", "target", "is_public", "bypass_header", "csp",
 		"geo_mode", "geo_countries")
 	requireColumns(t, "settings", "key", "value")
+	// performer solo lo añade safeAlter sobre el CREATE (si safeAlter se
+	// rompe, esta columna desaparece) — la exige también la mutación.
+	requireColumns(t, "events", "id", "message", "performer")
 	requireColumns(t, "sessions",
 		"token", "user_id", "csrf_token", "ip", "user_agent",
 		"last_active", "created_at")

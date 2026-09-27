@@ -54,6 +54,12 @@ END {
 	printf "Umbrales:\n"
 	gate("regio (global)", g, 70)
 	for (p in total) {
+		if (p == "regio/cmd/seed") {
+			# El seed tiene sus propios tests (B1): umbral propio
+			c = (total[p] > 0) ? 100 * covpkg[p] / total[p] : 0
+			gate(p, c, 60)
+			continue
+		}
 		if (p ~ /^regio\/cmd\//) {
 			c = (total[p] > 0) ? 100 * covpkg[p] / total[p] : 0
 			printf "  (excluido) %-27s %5.1f%%  -> cubierto vía e2e\n", p, c

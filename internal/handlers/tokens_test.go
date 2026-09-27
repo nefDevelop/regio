@@ -144,15 +144,18 @@ func TestRequestBodySizeLimit(t *testing.T) {
 	db.InitDB()
 
 	t.Run("CSP report con body grande es rechazado", func(t *testing.T) {
-		largeBody := strings.Repeat("A", 20*1024) // 20KB
+		// JSON VÁLIDO de >10KB: con el límite real MaxBytesReader (10KB)
+		// ReadAll falla -> 400. Si el límite se relajara (mutación/regresión),
+		// el parseo tendría éxito -> 204 y el test lo detectaría.
+		largeBody := `{"csp-report":{"blocked-uri":"https://x.test/a.js","original-policy":"` +
+			strings.Repeat("A", 20*1024) + `"}}`
 		req := httptest.NewRequest("POST", "/api/csp-report", strings.NewReader(largeBody))
 		req.Host = "admin.test"
 		rr := httptest.NewRecorder()
 		HandleCSPReport(rr, req)
 
-		// El handler devuelve 400 si falla, o 204 si procesa. Con 20KB debería fallar.
 		if rr.Code != http.StatusBadRequest {
-			t.Errorf("CSP report con 20KB debería fallar, got %d", rr.Code)
+			t.Errorf("CSP report con JSON valido de 20KB deberia fallar por el limite de 10KB, got %d", rr.Code)
 		}
 	})
 }

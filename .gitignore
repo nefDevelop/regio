@@ -1,8 +1,8 @@
-# Binarios de Go
-REGIO
-regio
-main
-seed
+# Binarios de Go (anclados a la raíz: no deben eclipsar cmd/seed/)
+/REGIO
+/regio
+/main
+/seed
 
 # Bases de datos runtime
 *.db
@@ -15,6 +15,12 @@ config.json
 # Docker y logs
 *.log
 .docker/
+
+# Artefactos de test/bench (el baseline SÍ se commitea: bench/baseline.txt)
+*.test
+cover.out
+bench/current.txt
+bench/current.stat
 
 # Archivos de sistema y temporales
 .DS_Store
