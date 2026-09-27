@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Code Quality
+    name: Build + Vet
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,22 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-  test:
+  coverage:
+    name: Tests + Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # unit (-short) + suite completa con gate de cobertura por umbrales
+      - name: make test
+        run: make test
+
+  race:
     name: Tests + Race
     runs-on: ubuntu-latest
     steps:
@@ -35,13 +50,22 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Create data directory
-        run: mkdir -p data
+      - name: make test-race
+        run: make test-race
 
-      - name: Test (with race detector)
-        env:
-          MASTER_KEY: test-master-key-32-bytes-length-!!!
-        run: go test -race -v ./...
+  e2e:
+    name: E2E (binario real)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: make test-e2e
+        run: make test-e2e
 
   security:
     name: Security Scan
@@ -57,5 +81,9 @@ jobs:
       - name: Install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-      - name: Run gosec
-        run: gosec -no-fail -fmt text ./...
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # gosec con fallo real (baseline: solo G104) + go vet + govulncheck
+      - name: make audit
+        run: make audit
