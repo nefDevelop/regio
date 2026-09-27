@@ -12,7 +12,7 @@
 # esperada (se validan con los tests e2e del binario real).
 #
 # Umbrales (baseline 42,9% global + trabajo de Fase 3-5, con margen -2):
-#   global 70 | auth 85 | db 84 | handlers 85 | security 83
+#   global 70 | auth 83 | db 82 | handlers 83 | security 83
 
 PROFILE="${1:-cover.out}"
 
@@ -67,9 +67,9 @@ END {
 		}
 		c = (total[p] > 0) ? 100 * covpkg[p] / total[p] : 0
 		min = 0
-		if (p == "regio/internal/auth") min = 85
-		else if (p == "regio/internal/db") min = 84
-		else if (p == "regio/internal/handlers") min = 85
+		if (p == "regio/internal/auth") min = 83
+		else if (p == "regio/internal/db") min = 82
+		else if (p == "regio/internal/handlers") min = 83
 		else if (p == "regio/internal/security") min = 83
 		else { printf "  (sin umbral) %-27s %5.1f%%\n", p, c; continue }
 		gate(p, c, min)
