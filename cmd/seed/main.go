@@ -129,6 +129,7 @@ func createTables(DB *sql.DB) {
 		)`,
 		`CREATE TABLE IF NOT EXISTS rate_limits (
 			ip TEXT NOT NULL,
+			host TEXT NOT NULL DEFAULT '',
 			timestamp DATETIME NOT NULL
 		)`,
 	}
@@ -137,7 +138,8 @@ func createTables(DB *sql.DB) {
 			log.Fatalf("Error creando tabla: %v\nSQL: %s", err, d)
 		}
 	}
-	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, host, timestamp)")
+	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_limits_unique ON rate_limits(ip, host, timestamp)")
 }
 
 func seedData(DB *sql.DB) {
@@ -298,11 +300,11 @@ func seedData(DB *sql.DB) {
 	fmt.Println("  • 3 CSP reports")
 
 	for i := 0; i < 50; i++ {
-		DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES ('45.33.32.156', ?)",
+		DB.Exec("INSERT INTO rate_limits (ip, host, timestamp) VALUES ('45.33.32.156', 'blog.midominio.com', ?)",
 			now.Add(-time.Duration(30+i)*time.Second))
 	}
 	for i := 0; i < 20; i++ {
-		DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES ('91.121.89.12', ?)",
+		DB.Exec("INSERT INTO rate_limits (ip, host, timestamp) VALUES ('91.121.89.12', 'app.midominio.com', ?)",
 			now.Add(-time.Duration(60+i)*time.Second))
 	}
 	fmt.Println("  • Rate limits históricos")

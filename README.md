@@ -44,7 +44,7 @@
 | **Seguridad** | WAF Integrado | Detección de SQLi, XSS, path traversal y scanner User-Agents |
 | **Seguridad** | Fail2Ban | Bloqueo por IP (5 fallos/15min) y por subred (15 fallos/1h) |
 | **Seguridad** | Geobloqueo GeoIP | Filtrado por país (allow/deny) con BD local `.mmdb`, global o por servicio |
-| **Seguridad** | Rate Limiting | 100 req/min por IP con persistencia en SQLite |
+| **Seguridad** | Rate Limiting | 100 req/min por (IP, servicio) + techo global de 300 req/min por IP, persistido en SQLite |
 | **Seguridad** | Anti-Botnet | Rate limiting por username (10 fallos → 30min bloqueo) |
 | **Seguridad** | CSP Dinámico | Políticas por servicio con panel de reportes |
 | **Seguridad** | HTTPS/TLS | TLS nativo con redirección automática HTTP→HTTPS |
@@ -197,7 +197,7 @@ Cliente → SecurityEngine → Auth → Proxy → Backend
 
 - **Geobloqueo por país**: lista blanca (`allow`, ej: solo España) o lista negra (`deny`, ej: todo menos India) sobre una BD GeoIP local; configurable como política global y por servicio, con fail-open/fail-closed elegible en el panel
 - **IP/Subnet blocking**: 5 fallos → 15 min bloqueo individual; 15 fallos → 1h bloqueo de /24
-- **Rate limiting**: 100 peticiones/minuto por IP (persistido en SQLite)
+- **Rate limiting**: 100 peticiones/minuto por (IP, servicio) con techo global de 300/min por IP entre todos los servicios (persistido en SQLite)
 - **User rate limiting**: 10 fallos de login por username → 30 min bloqueo (anti-botnet distribuido)
 - **WAF**: Detecta path traversal (`../`, `..\\`), SQL injection (`' OR 1=1--`, `UNION SELECT`), XSS (`<script>`, `onerror=`) y User-Agent de scanners
 - **SSRF Protection**: Validación DNS en tiempo real en `DialContext` — bloquea loopback, link-local, RFC 1918 (salvo autorización explícita)

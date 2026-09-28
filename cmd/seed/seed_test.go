@@ -79,6 +79,7 @@ func TestCreateTablesEsquemaCompleto(t *testing.T) {
 		{"users", "totp_last_epoch"},
 		{"settings", "value"},
 		{"bypass_keys", "migrated"},
+		{"rate_limits", "host"},
 	}
 	for _, p := range paridad {
 		if !hasColumn(t, db, p.tabla, p.col) {
@@ -132,8 +133,8 @@ func TestSeedDataPueblaLaDB(t *testing.T) {
 		}
 	}
 
-	// Rate limits históricos: 70 timestamps DISTINTOS (compatibles con el
-	// índice único (ip,timestamp) de db.Migrate)
+	// Rate limits históricos: timestamps DISTINTOS (compatibles con el
+	// índice único (ip,host,timestamp) de db.Migrate)
 	if n := seedCount(t, db, "SELECT COUNT(DISTINCT timestamp) FROM rate_limits WHERE ip='45.33.32.156'"); n != 50 {
 		t.Errorf("timestamps distintos de rate_limits = %d; want 50 (colisionarian con el índice único)", n)
 	}

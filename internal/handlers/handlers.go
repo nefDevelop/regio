@@ -977,11 +977,7 @@ func (w *statusWriter) WriteHeader(status int) {
 }
 
 func normalizeHost(host string) string {
-	h, _, err := net.SplitHostPort(host)
-	if err != nil {
-		return strings.ToLower(host)
-	}
-	return strings.ToLower(h)
+	return security.NormalizeHost(host)
 }
 
 // IsKnownHost indica si el host es servible por reGIO: el dominio de admin o

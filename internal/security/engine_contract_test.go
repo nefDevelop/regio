@@ -44,11 +44,11 @@ func TestSecurityEngineContract(t *testing.T) {
 		ResetRateLimiter()
 		ip := "203.0.113.30"
 		for i := 0; i < 100; i++ {
-			if !CheckRateLimit(ip) {
+			if !CheckRateLimit(ip, "app.test") {
 				t.Fatalf("rate limit cedió antes de la petición %d", i+1)
 			}
 		}
-		if CheckRateLimit(ip) {
+		if CheckRateLimit(ip, "app.test") {
 			t.Error("la petición 101 debería ser rechazada")
 		}
 	})

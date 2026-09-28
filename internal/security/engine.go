@@ -18,8 +18,9 @@ func SecurityEngine(ip string, r *http.Request) error {
 		return fmt.Errorf("IP bloqueada: %s", reason)
 	}
 
-	// 2. Rate Limiting Global
-	if !CheckRateLimit(ip) {
+	// 2. Rate Limiting: 100 req/min por (IP, servicio) + techo global de 300
+	// por IP entre todos los servicios
+	if !CheckRateLimit(ip, NormalizeHost(r.Host)) {
 		return fmt.Errorf("demasiadas peticiones")
 	}
 

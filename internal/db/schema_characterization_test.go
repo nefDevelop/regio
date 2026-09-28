@@ -87,6 +87,7 @@ func TestInitDBSchemaCharacterization(t *testing.T) {
 		"host", "target", "is_public", "bypass_header", "csp",
 		"geo_mode", "geo_countries")
 	requireColumns(t, "settings", "key", "value")
+	requireColumns(t, "rate_limits", "ip", "host", "timestamp")
 	// performer solo lo añade safeAlter sobre el CREATE (si safeAlter se
 	// rompe, esta columna desaparece) — la exige también la mutación.
 	requireColumns(t, "events", "id", "message", "performer")
@@ -111,11 +112,19 @@ func TestInitDBSchemaCharacterization(t *testing.T) {
 		t.Error("falta el índice idx_rate_limits_ip")
 	}
 
-	// Índice único (ip,timestamp): base del fix de persistencia sin duplicados
+	// Índice único (ip,host,timestamp): base del fix de persistencia sin
+	// duplicados y de la clave por IP+servicio del rate limiter
 	var uniqCount int
 	DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_rate_limits_unique'").Scan(&uniqCount)
 	if uniqCount == 0 {
 		t.Error("falta el índice único idx_rate_limits_unique (fix deuda #5)")
+	}
+	// El índice único debe incluir host: (ip,timestamp) rechazaría filas
+	// válidas de servicios distintos con el mismo timestamp
+	var uniqCols int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_index_info('idx_rate_limits_unique') WHERE name='host'").Scan(&uniqCols)
+	if uniqCols == 0 {
+		t.Error("idx_rate_limits_unique debe cubrir la columna host (clave ip+servicio)")
 	}
 }
 
@@ -173,6 +182,7 @@ func TestMigrationOldSchemaToCurrent(t *testing.T) {
 	// Columnas nuevas añadidas por safeAlter
 	requireColumns(t, "servicios", "csp", "geo_mode", "geo_countries")
 	requireColumns(t, "users", "invite_token", "is_admin", "totp_active")
+	requireColumns(t, "rate_limits", "host")
 
 	// Tablas nuevas
 	for _, tabla := range []string{"settings", "events", "banned_ips", "sessions", "app_tokens"} {
