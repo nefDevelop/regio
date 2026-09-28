@@ -1206,6 +1206,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := security.SecurityEngine(ip, r); err != nil {
+		// Motivo concreto del bloqueo (WAF/geo/IP): antes se descartaba y en
+		// logs solo aparecía el status, imposible diagnosticar "estoy bloqueado"
+		log.Printf("%s bloqueo de %s (Host: %s): %s", db.PrefixBLOCK, ip, db.SanitizeLog(r.Host), db.SanitizeLog(err.Error()))
 		switch {
 		case errors.Is(err, security.ErrGeoBlocked):
 			sw.status = http.StatusForbidden
