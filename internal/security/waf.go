@@ -16,8 +16,13 @@ var ErrWAF = errors.New("bloqueo del WAF")
 
 var (
 	rePathTraversal = regexp.MustCompile(`(?i)(\.\.\/|\.\.\\)`)
-	reSQLi          = regexp.MustCompile(`(?i)(union\s+.*select|select\s+.*\s+from|drop\s+table|insert\s+into|update\s+.*set|delete\s+from|--|#|\/\*|exec\s*\(|waitfor\s+delay|sleep\s*\(|pg_sleep|0x[0-9a-f]{8,}|information_schema|char\s*\(|nchar\s*\()`)
-	reXSS           = regexp.MustCompile(`(?i)(<script[^>]*>|javascript:|<iframe|<object|<embed|<svg[^>]*>|on\w+\s*=)`)
+	// `--` exige espacio o fin de cadena detrás: es la sintaxis real de un
+	// comentario SQL. Como token suelto bloqueaba rutas legítimas que contienen
+	// doble guion, p. ej. los hashes base64 de los chunks de SvelteKit
+	// (`/_app/immutable/chunks/lEk--Z8l.js`), devolviendo 403 sobre assets
+	// estáticos válidos. `' OR 1=1--` y `UNION SELECT ... --` siguen casando.
+	reSQLi = regexp.MustCompile(`(?i)(union\s+.*select|select\s+.*\s+from|drop\s+table|insert\s+into|update\s+.*set|delete\s+from|--(?:\s|$)|#|\/\*|exec\s*\(|waitfor\s+delay|sleep\s*\(|pg_sleep|0x[0-9a-f]{8,}|information_schema|char\s*\(|nchar\s*\()`)
+	reXSS  = regexp.MustCompile(`(?i)(<script[^>]*>|javascript:|<iframe|<object|<embed|<svg[^>]*>|on\w+\s*=)`)
 )
 
 // CheckWAF realiza una inspección básica de seguridad en la petición HTTP
