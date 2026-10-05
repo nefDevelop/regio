@@ -1,0 +1,12 @@
+# Artefactos generados por `make perf`. Se regeneran en local y no se commitean:
+# un informe de rendimiento de otra máquina (misma CPU, otra carga) no es
+# referencia, es ruido.
+load-*.json
+!load-baseline.json
+report-*
+bench.txt
+
+# load-baseline.json sí se commitea: es la referencia contra la que compara
+# `make perf-gate`, igual que bench/baseline.txt para `make bench-gate`.
+# Regenerar con `make perf-baseline` solo si el cambio de rendimiento es
+# intencionado, y revisar el diff.
