@@ -17,6 +17,7 @@ Este documento detalla las funcionalidades planeadas y el estado actual del desa
 
 ## Completado ✅
 
+- [x] **Guard de memoria del rate limiter sin DoS:** el guard de "memory exhaustion" rechazaba tráfico (`return false`) y llamaba a `LimpiarRateLimiter()` por cada IP nueva al superar 10.000 entradas. Como la limpieza solo borra IPs con 10 min de inactividad, rotar IPs de origen mantenía todas las entradas como activas y cada petición pagaba un volcado completo a SQLite: medido **165 ms/petición** frente a 2–18 µs antes del umbral, sin recuperación posible. Ahora expulsa las entradas menos recientemente usadas (LRU por `seq`) y sigue atendiendo la petición: **19,7 µs/petición** en el mismo punto (~5.000×). El guard acota la memoria, no el tráfico. Cubierto por `TestRateLimiterAcotaMemoriaSinDegradar` y `TestRateLimiterExpulsaLoMaisViejo`.
 - [x] **Geobloqueo por país (GeoIP):** Filtrado allow/deny con BD local `.mmdb` (MaxMind/DB-IP), política global + override por servicio, fail-open/fail-closed configurable desde el panel admin.
 - [x] **SSO / Proxy Auth:** Inyección de identidad (`X-Forwarded-User`) al backend para inicio de sesión automático (Single Sign-On).
 - [x] Proxy Inverso core con soporte HTTP/1.1 y WebSockets.
