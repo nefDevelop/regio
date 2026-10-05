@@ -125,6 +125,8 @@ func TestWAFNewSQLiPatterns(t *testing.T) {
 		{"safe-normal-query", false, "Texto normal"},
 		{"hello world", false, "Texto inocuo"},
 		{"SELECTION", false, "SELECT como parte de palabra"},
+		{"' OR 1=1--", true, "Comentario SQL al final de la cadena"},
+		{"1 UNION SELECT 2,3-- ", true, "Comentario SQL seguido de espacio"},
 	}
 
 	for _, tt := range tests {
@@ -138,6 +140,53 @@ func TestWAFNewSQLiPatterns(t *testing.T) {
 			}
 			if !tt.blocked && err != nil {
 				t.Errorf("CheckWAF debería PERMITIR %q pero fue bloqueado: %v", tt.input, err)
+			}
+		})
+	}
+}
+
+// TestWAFPathsWithDoubleHyphen fija la regresión que rompía la carga de módulos:
+// `--` se detectaba como comentario SQL sin exigir el espacio que exige la
+// sintaxis real, así que cualquier ruta con doble guion devolvía 403. Los hashes
+// base64 de los chunks de SvelteKit los producen de forma rutinaria
+// (`lEk--Z8l.js`), y el 403 con cuerpo `text/plain` rompía el import dinámico
+// con "disallowed MIME type".
+func TestWAFPathsWithDoubleHyphen(t *testing.T) {
+	permitidas := []struct {
+		path      string
+		escenario string
+	}{
+		{"/_app/immutable/chunks/lEk--Z8l.js", "Chunk SvelteKit con hash real de producción"},
+		{"/_app/immutable/chunks/a--b.js", "Doble guion mínimo en un chunk"},
+		{"/_app/immutable/chunks/D--.js", "Doble guion al final del nombre"},
+		{"/_app/immutable/nodes/2.js", "Node sin doble guion (control)"},
+		{"/assets/logo--dark.svg", "Asset estático con doble guion"},
+	}
+
+	for _, tt := range permitidas {
+		t.Run(tt.escenario, func(t *testing.T) {
+			req := &http.Request{URL: &url.URL{Path: tt.path}}
+			if err := CheckWAF(req); err != nil {
+				t.Errorf("CheckWAF(%q) = %v; la ruta es legítima y debe permitirse", tt.path, err)
+			}
+		})
+	}
+}
+
+// TestWAFPathTraversalStillBlocked comprueba que el ajuste de `--` no relaja la
+// detección de path traversal, que comparte el mismo analizador.
+func TestWAFPathTraversalStillBlocked(t *testing.T) {
+	bloqueadas := []string{
+		"/../../etc/passwd",
+		"/assets/..\\..\\windows\\system32",
+		"/_app/immutable/chunks/../../secret.js",
+	}
+
+	for _, path := range bloqueadas {
+		t.Run(path, func(t *testing.T) {
+			req := &http.Request{URL: &url.URL{Path: path}}
+			if err := CheckWAF(req); err == nil {
+				t.Errorf("CheckWAF(%q) = nil; el path traversal debe seguir bloqueándose", path)
 			}
 		})
 	}

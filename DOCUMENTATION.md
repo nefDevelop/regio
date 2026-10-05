@@ -60,7 +60,7 @@
  │  │                                                               │  │
  │  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │  │
  │  │   │    GeoIP     │─▶│  IP Filter   │─▶│ Rate Limiter │        │  │
- │  │   │ (por país)   │  │ (Fail2Ban)   │  │  100 req/min │        │  │
+ │  │   │ (por país)   │  │ (Fail2Ban)   │  │ 100/min/svc │        │  │
  │  │   └──────────────┘  └──────────────┘  └──────┬───────┘        │  │
  │  │                                              ▼                │  │
  │  │                                       ┌──────────────┐        │  │
@@ -161,7 +161,7 @@ regio/
 │       ├── ip_filter.go         # Fail2Ban por IP y subred
 │       ├── network.go           # SafeDialContext, validación IP
 │       ├── network_test.go      # Tests de red/SSRF
-│       ├── ratelimit.go         # Rate limiting por IP
+│       ├── ratelimit.go         # Rate limiting por IP+servicio
 │       ├── security_test.go     # Tests de seguridad integrados
 │       ├── setup_test.go        # Helpers de test
 │       ├── user_filter.go       # Rate limiting por username
@@ -259,6 +259,7 @@ reGIO utiliza **SQLite** (mediante `modernc.org/sqlite`, sin CGO) como motor de 
 │ rate_limits  │ │                     │                      │
 ├──────────────┤ │                     │                      │
 │ ip           │ │                     │                      │
+│ host         │ │                     │                      │
 │ timestamp    │ │                     │                      │
 └──────────────┘ │                     │                      │
 ```
@@ -353,6 +354,7 @@ reGIO utiliza **SQLite** (mediante `modernc.org/sqlite`, sin CGO) como motor de 
 | Columna | Tipo | Descripción |
 |---------|------|-------------|
 | `ip` | TEXT | Dirección IP |
+| `host` | TEXT | Servicio (host) al que aplica la petición; `''` en filas previas a la migración |
 | `timestamp` | TEXT | Timestamp de la petición |
 
 ---
@@ -376,7 +378,8 @@ Petición entrante
        ▼
 ┌─────────────────────────────┐
 │ ¿Rate limit excedido?       │──SÍ──▶ 429 Too Many Requests
-│ (100 req/min por IP)        │
+│ (100/min por IP+servicio    │
+│  o techo global 300/min IP) │
 └─────────────────────────────┘
        NO
        ▼
@@ -457,10 +460,18 @@ El WAF analiza cada petición y detecta:
 
 ### 5.3 Rate Limiting — `internal/security/ratelimit.go`
 
-- **100 peticiones por minuto por IP**
-- Datos persistidos en la tabla `rate_limits` de SQLite
+- **100 peticiones por minuto por (IP, servicio)**: cada servicio tiene su
+  propio presupuesto, así el tráfico ruidoso de un servicio público no agota
+  el acceso de esa IP al resto (servicios y panel admin)
+- **Techo global de 300 peticiones por minuto por IP** entre todos los
+  servicios: evitar que multiplicar servicios multiplique la capacidad de abuso
+- Datos persistidos en la tabla `rate_limits` de SQLite con clave
+  `(ip, host, timestamp)`; el techo global se reconstruye desde la BD al
+  reiniciar sumando las filas de todos los servicios de la IP
 - Sobrevive a reinicios del servidor
 - Limpieza periódica de datos expirados (cada 10 min)
+- Nota: las filas previas a la migración (sin `host`, quedan con `host=''`)
+  solo cuentan para el techo global de su IP
 
 ### 5.4 Anti-Botnet Distribuido — `internal/security/user_filter.go`
 
@@ -760,7 +771,8 @@ Push / PR a main
 
 | Constante | Valor | Localización |
 |-----------|-------|-------------|
-| Rate limit | 100 req/min por IP | `ratelimit.go:11-12` |
+| Rate limit | 100 req/min por (IP, servicio) | `ratelimit.go:20` |
+| Rate limit global | 300 req/min por IP (todos los servicios) | `ratelimit.go:21` |
 | Fail2Ban individual | 5 fallos → 15 min bloqueo | `ip_filter.go:68-72` |
 | Fail2Ban subred | 15 fallos → 1 h bloqueo | `ip_filter.go:82-89` |
 | User rate limit | 10 fallos → 30 min bloqueo | `user_filter.go:14-15` |

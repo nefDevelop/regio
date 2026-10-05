@@ -153,6 +153,7 @@ func createTables(DB *sql.DB) {
 		)`,
 		`CREATE TABLE IF NOT EXISTS rate_limits (
 			ip TEXT NOT NULL,
+			host TEXT NOT NULL DEFAULT '',
 			timestamp DATETIME NOT NULL
 		)`,
 	}
@@ -161,7 +162,8 @@ func createTables(DB *sql.DB) {
 			log.Fatalf("Error creando tabla: %v\nSQL: %s", err, d)
 		}
 	}
-	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
+	DB.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, host, timestamp)")
+	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_limits_unique ON rate_limits(ip, host, timestamp)")
 }
 
 func seedData(DB *sql.DB) {
@@ -339,14 +341,16 @@ func seedData(DB *sql.DB) {
 	// Rate limits: los 70 históricos (50 + 20) sobre las dos IPs conocidas se
 	// conservan tal cual para no alterar el seed original. El resto del volumen
 	// se reparte sobre un pool sintético para que CheckRateLimit no mida siempre
-	// las mismas dos claves.
+	// las mismas dos claves. Todo con columna host: el limiter agrupa por
+	// (IP, servicio) y sin host las filas solo alimentarían el techo global.
 	legacy := []struct {
-		ip  string
-		n   int
-		off int
+		ip   string
+		host string
+		n    int
+		off  int
 	}{
-		{"45.33.32.156", 50, 30},
-		{"91.121.89.12", 20, 60},
+		{"45.33.32.156", "blog.midominio.com", 50, 30},
+		{"91.121.89.12", "app.midominio.com", 20, 60},
 	}
 	inserted := 0
 	for _, l := range legacy {
@@ -354,8 +358,8 @@ func seedData(DB *sql.DB) {
 			break
 		}
 		for i := 0; i < l.n && inserted < *flagRateLimits; i++ {
-			DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES (?, ?)",
-				l.ip, now.Add(-time.Duration(l.off+i)*time.Second))
+			DB.Exec("INSERT INTO rate_limits (ip, host, timestamp) VALUES (?, ?, ?)",
+				l.ip, l.host, now.Add(-time.Duration(l.off+i)*time.Second))
 			inserted++
 		}
 	}
@@ -423,17 +427,20 @@ func insertBulkRateLimits(DB *sql.DB, now time.Time, offset, count int) (int, er
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO rate_limits (ip, timestamp) VALUES (?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO rate_limits (ip, host, timestamp) VALUES (?, ?, ?)")
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
+	// El pool sintético rota servicios para que las cargas por (IP, servicio)
+	// encuentren filas, no solo el techo global.
+	hosts := []string{"blog.midominio.com", "app.midominio.com"}
 	for i := 0; i < count; i++ {
 		n := offset + i
 		ip := fmt.Sprintf("198.18.%d.%d", (n/64)%256, n%64+1)
 		ts := now.Add(-time.Duration(n%3600) * time.Second)
-		if _, err := stmt.Exec(ip, ts); err != nil {
+		if _, err := stmt.Exec(ip, hosts[n%len(hosts)], ts); err != nil {
 			return i, err
 		}
 	}

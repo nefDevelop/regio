@@ -28,11 +28,12 @@ func TestRateLimiterAcotaMemoriaSinDegradar(t *testing.T) {
 
 	// Dos veces el techo: si el guard funciona, hay que expulsar de verdad.
 	const total = maxTrackedIPs * 2
+	const svc = "evict.test"
 
 	t0 := time.Now()
 	for i := 0; i < total; i++ {
 		ip := fmt.Sprintf("203.0.%d.%d", i/254, i%254+1)
-		if !CheckRateLimit(ip) {
+		if !CheckRateLimit(ip, svc) {
 			// Cada IP es nueva y solo ha hecho una petición: el guard de memoria
 			// no puede rechazar por cuota. Si falla aquí, el DoS ha vuelto.
 			t.Fatalf("CheckRateLimit rechazó la petición %d de una IP nueva; el guard "+
@@ -42,7 +43,10 @@ func TestRateLimiterAcotaMemoriaSinDegradar(t *testing.T) {
 	elapsed := time.Since(t0)
 
 	rlMu.Lock()
-	size := len(peticionesMem)
+	size := 0
+	for _, hosts := range peticionesMem {
+		size += len(hosts)
+	}
 	rlMu.Unlock()
 
 	if size > maxTrackedIPs {
@@ -77,8 +81,10 @@ func TestRateLimiterExpulsaLoMaisViejo(t *testing.T) {
 
 	// Cliente legítimo: agota su cuota y sigue pidiendo durante todo el llenado.
 	const legitimo = "198.51.100.250"
+	const svcLegit = "legit.test"
+	const svc = "evict.test"
 	for i := 0; i < maxPeticiones; i++ {
-		if !CheckRateLimit(legitimo) {
+		if !CheckRateLimit(legitimo, svcLegit) {
 			t.Fatalf("el cliente legítimo fue rechazado en la petición %d", i+1)
 		}
 	}
@@ -86,14 +92,14 @@ func TestRateLimiterExpulsaLoMaisViejo(t *testing.T) {
 	// Llenado por encima del techo con IPs desechables, con el cliente legítimo
 	// intercalado para que siga siendo "el más reciente".
 	for i := 0; i < maxTrackedIPs+500; i++ {
-		CheckRateLimit(fmt.Sprintf("203.0.%d.%d", i/254, i%254+1))
+		CheckRateLimit(fmt.Sprintf("203.0.%d.%d", i/254, i%254+1), svc)
 		if i%50 == 0 {
-			CheckRateLimit(legitimo) // rejected, pero refresca su LRU
+			CheckRateLimit(legitimo, svcLegit) // rejected, pero refresca su LRU
 		}
 	}
 
 	rlMu.Lock()
-	_, sigue := peticionesMem[legitimo]
+	_, sigue := peticionesMem[legitimo][svcLegit]
 	rlMu.Unlock()
 	if !sigue {
 		t.Error("el cliente legítimo fue expulsado pese a seguir activo; la expulsión " +
@@ -102,7 +108,7 @@ func TestRateLimiterExpulsaLoMaisViejo(t *testing.T) {
 
 	// Su cuota debe seguir agotada: si se le hubiera olvidado el historial, el
 	// rate limit se desactivaría justo para quien sí respetaba el límite.
-	if CheckRateLimit(legitimo) {
+	if CheckRateLimit(legitimo, svcLegit) {
 		t.Error("el cliente legítimo perdió su cuota al expulsar otras entradas")
 	}
 }

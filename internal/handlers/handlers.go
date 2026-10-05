@@ -977,11 +977,7 @@ func (w *statusWriter) WriteHeader(status int) {
 }
 
 func normalizeHost(host string) string {
-	h, _, err := net.SplitHostPort(host)
-	if err != nil {
-		return strings.ToLower(host)
-	}
-	return strings.ToLower(h)
+	return security.NormalizeHost(host)
 }
 
 // IsKnownHost indica si el host es servible por reGIO: el dominio de admin o
@@ -1210,6 +1206,9 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := security.SecurityEngine(ip, r); err != nil {
+		// Motivo concreto del bloqueo (WAF/geo/IP): antes se descartaba y en
+		// logs solo aparecía el status, imposible diagnosticar "estoy bloqueado"
+		log.Printf("%s bloqueo de %s (Host: %s): %s", db.PrefixBLOCK, ip, db.SanitizeLog(r.Host), db.SanitizeLog(err.Error()))
 		switch {
 		case errors.Is(err, security.ErrGeoBlocked):
 			sw.status = http.StatusForbidden

@@ -36,7 +36,7 @@ func BenchmarkCheckRateLimit(b *testing.B) {
 			ResetRateLimiter()
 			b.StartTimer()
 		}
-		CheckRateLimit(ip)
+		CheckRateLimit(ip, "bench.test")
 	}
 }
 

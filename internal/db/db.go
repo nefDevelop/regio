@@ -191,23 +191,29 @@ func Migrate(database *sql.DB) error {
 	}
 	safeAlter(database, "ALTER TABLE bypass_keys ADD COLUMN migrated INTEGER DEFAULT 0", "bypass_keys", "migrated")
 
-	// Tabla para rate limiting persistente
+	// Tabla para rate limiting persistente (clave: IP + servicio)
 	rateDDL := `
 	CREATE TABLE IF NOT EXISTS rate_limits (
 		ip TEXT NOT NULL,
+		host TEXT NOT NULL DEFAULT '',
 		timestamp DATETIME NOT NULL
 	);`
 	if _, err := database.Exec(rateDDL); err != nil {
 		return fmt.Errorf("creando tabla rate_limits: %w", err)
 	}
-	database.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, timestamp)")
+	// BDs existentes: añadir la columna host (filas legacy quedan con host='')
+	safeAlter(database, "ALTER TABLE rate_limits ADD COLUMN host TEXT NOT NULL DEFAULT ''", "rate_limits", "host")
+	database.Exec("DROP INDEX IF EXISTS idx_rate_limits_ip")
+	database.Exec("CREATE INDEX IF NOT EXISTS idx_rate_limits_ip ON rate_limits(ip, host, timestamp)")
 
 	// Fix deuda #5: el histórico permitía filas duplicadas (ip,timestamp) —
 	// INSERT OR IGNORE no deduplicaba sin restricción única, lo que inflaba el
 	// recuento tras un reinicio (bloqueos prematuros) y hacía la persistencia
 	// O(n²). Se deduplica y se garantiza unicidad para que OR IGNORE surta efecto.
-	database.Exec("DELETE FROM rate_limits WHERE rowid NOT IN (SELECT MIN(rowid) FROM rate_limits GROUP BY ip, timestamp)")
-	database.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_limits_unique ON rate_limits(ip, timestamp)")
+	// Índice único sobre (ip,host,timestamp): el rate limit es por IP+servicio.
+	database.Exec("DELETE FROM rate_limits WHERE rowid NOT IN (SELECT MIN(rowid) FROM rate_limits GROUP BY ip, host, timestamp)")
+	database.Exec("DROP INDEX IF EXISTS idx_rate_limits_unique")
+	database.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_limits_unique ON rate_limits(ip, host, timestamp)")
 	return nil
 }
 

@@ -171,6 +171,17 @@ func TestMainHandlerRoutingCharacterization(t *testing.T) {
 			wantStatus: 403, wantBody: "Solicitud bloqueada por las reglas de seguridad",
 		},
 		{
+			// Regresión: `--` se detectaba como comentario SQL sin exigir el
+			// espacio que exige la sintaxis real, así que las rutas con doble
+			// guion devolvían 403. Los hashes de los chunks de SvelteKit los
+			// producen de forma rutinaria y el 403 rompía la carga de módulos.
+			// Aquí se congela que una ruta así NO la bloquea el WAF: sin sesión
+			// responde 401, no 403.
+			name: "Ruta con doble guion (hash de chunk) -> NO la bloquea el WAF",
+			path: "/_app/immutable/chunks/lEk--Z8l.js", host: "service.test",
+			wantStatus: 401, wantBodyNot: "Solicitud bloqueada por las reglas de seguridad",
+		},
+		{
 			name: "IP bloqueada (Fail2Ban) -> 403 con detalle del motivo",
 			path: "/x", host: "service.test", bannedIP: true,
 			wantStatus: 403, wantBody: "IP bloqueada",

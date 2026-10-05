@@ -84,6 +84,9 @@ run-dbtest: seed build
 # ---------------------------------------------------------------------------
 # Pruebas — punto de entrada único `make test` con targets granulares
 # ---------------------------------------------------------------------------
+# ⚠️  NUNCA crear/borrar ./data en estos targets: ./data es el bind mount del
+#     docker-compose (BD de producción del contenedor REGIO_seguro). Los tests
+#     usan rutas temporales propias (t.TempDir / REGIO_DB_PATH de e2e).
 
 # PUERTA PRINCIPAL: unitarios rápidos + suite completa con gate de cobertura
 test: test-unit test-cover
@@ -91,34 +94,24 @@ test: test-unit test-cover
 
 # Rápido: excluye los tests marcados con testing.Short() (backends, Argon2)
 test-unit:
-	@mkdir -p data
 	$(TEST_KEY) go test -short -count=1 ./...
-	@rm -rf data
 
 # Suite completa in-process (unit + integración), sin cobertura
 test-integration:
-	@mkdir -p data
 	$(TEST_KEY) go test -count=1 ./...
-	@rm -rf data
 
 # Solo matrices de contrato y caracterización (red de seguridad de refactorizaciones)
 test-contract:
-	@mkdir -p data
 	$(TEST_KEY) go test -count=1 -run 'Contract|Characterization' ./internal/...
-	@rm -rf data
 
 # Suite completa con perfil de cobertura + gate por umbrales (scripts/cover_gate.sh)
 test-cover:
-	@mkdir -p data
 	$(TEST_KEY) go test -count=1 -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...
 	@sh scripts/cover_gate.sh cover.out
 	@rm -f cover.out
-	@rm -rf data
 
 test-race:
-	@mkdir -p data
 	$(TEST_KEY) go test -race -count=1 ./...
-	@rm -rf data
 
 # E2E: compila y arranca el binario real (requiere plataforma con bind local;
 # el tag mantiene estos tests fuera de `go test ./...` normal)
@@ -261,8 +254,8 @@ perf-clean:
 	@echo "perf-clean: artefactos de rendimiento borrados (baseline conservado)"
 
 clean:
-	rm -f $(BINARY_NAME)
-	rm -rf data cover.out
+	rm -f $(BINARY_NAME) cover.out
+	@# ./data NO se toca: es el bind mount con la BD de producción (docker-compose)
 	$(MAKE) perf-clean
 	go clean
 
