@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -17,6 +18,16 @@ import (
 
 var dbPath = "./data/REGIO_TEST.db"
 
+// Flags de volumen. Los valores por defecto reproducen exactamente el seed
+// original (70 rate_limits, 20 eventos) para no alterar `make run-dbtest`.
+// `make seed SEED_N=100000` escala las tablas del camino caliente de cada petición:
+// rate_limits (lectura/escritura en CheckRateLimit) y events (LogEvent por request).
+var (
+	flagForce      = flag.Bool("force", false, "Sobrescribe la base de datos si ya existe")
+	flagRateLimits = flag.Int("rate-limits", 70, "Filas totales en rate_limits (hot path del rate limiter)")
+	flagEvents     = flag.Int("events", 20, "Filas totales en events (log de auditoría)")
+)
+
 func init() {
 	if p := os.Getenv("REGIO_DB_PATH"); p != "" {
 		dbPath = p
@@ -24,17 +35,12 @@ func init() {
 }
 
 func main() {
-	if _, err := os.Stat(dbPath); err == nil {
+	flag.Parse()
+
+	if _, err := os.Stat(dbPath); err == nil && !*flagForce {
 		fmt.Printf("[WARN] %s ya existe. Usa --force para sobrescribir.\n", dbPath)
-		for _, a := range os.Args[1:] {
-			if a == "--force" {
-				goto proceed
-			}
-		}
-		fmt.Println("Omitiendo. Ejecuta: go run ./cmd/seed --force")
 		return
 	}
-proceed:
 	os.Remove(dbPath)
 	os.MkdirAll("./data", 0750)
 
@@ -49,11 +55,29 @@ proceed:
 	DB.Exec("PRAGMA foreign_keys=ON")
 
 	createTables(DB)
+	t0 := time.Now()
 	seedData(DB)
+	elapsed := time.Since(t0)
 
-	fmt.Printf("\n[OK] Base de datos de prueba creada: %s\n", dbPath)
+	fmt.Printf("\n[OK] Base de datos de prueba creada: %s (%.1fs)\n", dbPath, elapsed.Seconds())
+	printDatasetSummary(DB)
 	fmt.Println("[INFO] Ejecuta: make run-dbtest")
 	fmt.Println()
+}
+
+// printDatasetSummary informa del volumen real y del tamaño en disco: sin esto no
+// se puede atribuir un resultado de carga al tamaño del dataset que lo produjo.
+func printDatasetSummary(DB *sql.DB) {
+	for _, t := range []string{"users", "sessions", "servicios", "rate_limits", "events", "csp_reports"} {
+		var n int
+		if err := DB.QueryRow("SELECT COUNT(*) FROM " + t).Scan(&n); err != nil {
+			continue
+		}
+		fmt.Printf("    %-12s %d filas\n", t, n)
+	}
+	if fi, err := os.Stat(dbPath); err == nil {
+		fmt.Printf("    %-12s %.1f MiB\n", "db", float64(fi.Size())/(1024*1024))
+	}
 }
 
 func createTables(DB *sql.DB) {
@@ -275,12 +299,27 @@ func seedData(DB *sql.DB) {
 		{"[BLOCK] IP/Rango bloqueado manualmente: 10.0.0.99", "admin", 31},
 		{"[WARN] Bloqueo CSP en app.midominio.com: https://tracker.example.com/pixel.gif (Directiva: img-src)", "Sistema", 20},
 	}
+	// Los 21 eventos curados cubren los escenarios que lee el panel. Si se pide
+	// un volumen mayor, se completa con plantillas rotadas para que el índice de
+	// `events` tenga la misma profundidad que en producción.
+	bulk := *flagEvents - len(eventos)
+	if bulk < 0 {
+		bulk = 0
+	}
 	for _, e := range eventos {
 		ts := now.Add(-time.Duration(e.minutesAgo) * time.Minute)
 		DB.Exec("INSERT INTO events (timestamp, message, performer) VALUES (?, ?, ?)",
 			ts, e.msg, e.performer)
 	}
-	fmt.Printf("  • %d eventos\n", len(eventos))
+	if bulk > 0 {
+		n, err := insertBulkEvents(DB, now, len(eventos), bulk)
+		if err != nil {
+			log.Fatalf("Error sembrando eventos: %v", err)
+		}
+		fmt.Printf("  • %d eventos curados + %d generados\n", len(eventos), n)
+	} else {
+		fmt.Printf("  • %d eventos\n", len(eventos))
+	}
 
 	cspData := []struct {
 		host, blocked, directive, policy string
@@ -297,15 +336,108 @@ func seedData(DB *sql.DB) {
 	}
 	fmt.Println("  • 3 CSP reports")
 
-	for i := 0; i < 50; i++ {
-		DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES ('45.33.32.156', ?)",
-			now.Add(-time.Duration(30+i)*time.Second))
+	// Rate limits: los 70 históricos (50 + 20) sobre las dos IPs conocidas se
+	// conservan tal cual para no alterar el seed original. El resto del volumen
+	// se reparte sobre un pool sintético para que CheckRateLimit no mida siempre
+	// las mismas dos claves.
+	legacy := []struct {
+		ip  string
+		n   int
+		off int
+	}{
+		{"45.33.32.156", 50, 30},
+		{"91.121.89.12", 20, 60},
 	}
-	for i := 0; i < 20; i++ {
-		DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES ('91.121.89.12', ?)",
-			now.Add(-time.Duration(60+i)*time.Second))
+	inserted := 0
+	for _, l := range legacy {
+		if inserted >= *flagRateLimits {
+			break
+		}
+		for i := 0; i < l.n && inserted < *flagRateLimits; i++ {
+			DB.Exec("INSERT INTO rate_limits (ip, timestamp) VALUES (?, ?)",
+				l.ip, now.Add(-time.Duration(l.off+i)*time.Second))
+			inserted++
+		}
 	}
-	fmt.Println("  • Rate limits históricos")
+	if rest := *flagRateLimits - inserted; rest > 0 {
+		n, err := insertBulkRateLimits(DB, now, inserted, rest)
+		if err != nil {
+			log.Fatalf("Error sembrando rate limits: %v", err)
+		}
+		inserted += n
+	}
+	fmt.Printf("  • %d rate limits\n", inserted)
+}
+
+// insertBulkEvents genera `count` filas de auditoría adicionales. Se hace con
+// transacción y statement preparado porque a escala 1M el_exec por fila domina
+// el tiempo total del seed.
+func insertBulkEvents(DB *sql.DB, now time.Time, offset, count int) (int, error) {
+	templates := []string{
+		"[OK] Inicio de sesión exitoso: %s desde 10.%d.%d.%d",
+		"[PASS] Puente consultado: app.midominio.com -> http://10.0.0.10:3000",
+		"[OUT] GET /static/css/style.css (Host: app.midominio.com)",
+		"[OUT] GET /api/health (Host: api.externa.com)",
+		"[OK] Token de app verificado: Monitor API",
+		"[WARN] CSP aplicado con report-uri en blog.midominio.com",
+	}
+	users := []string{"admin", "devops", "lector", "sistema"}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO events (timestamp, message, performer) VALUES (?, ?, ?)")
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	for i := 0; i < count; i++ {
+		n := offset + i
+		ts := now.Add(-time.Duration(n) * time.Second)
+		tpl := templates[n%len(templates)]
+		performer := users[n%len(users)]
+		var msg string
+		if n%len(templates) == 0 {
+			msg = fmt.Sprintf(tpl, performer, n%250, (n/250)%250, n%254)
+		} else {
+			msg = tpl
+		}
+		if _, err := stmt.Exec(ts, msg, performer); err != nil {
+			return i, err
+		}
+	}
+	return count, tx.Commit()
+}
+
+// insertBulkRateLimits reparte `count` filas sobre el rango de benchmark
+// 198.18.0.0/15 (RFC 2544): público y enrutable en apariencia, nunca enrutable de
+// verdad, y ausente de banned_ips.
+func insertBulkRateLimits(DB *sql.DB, now time.Time, offset, count int) (int, error) {
+	tx, err := DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO rate_limits (ip, timestamp) VALUES (?, ?)")
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	for i := 0; i < count; i++ {
+		n := offset + i
+		ip := fmt.Sprintf("198.18.%d.%d", (n/64)%256, n%64+1)
+		ts := now.Add(-time.Duration(n%3600) * time.Second)
+		if _, err := stmt.Exec(ip, ts); err != nil {
+			return i, err
+		}
+	}
+	return count, tx.Commit()
 }
 
 func randomToken(length int) string {

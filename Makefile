@@ -5,7 +5,8 @@
 
 .PHONY: build run run-dbtest seed test test-unit test-integration test-contract \
 	test-cover test-race test-e2e test-smoke test-fuzz bench bench-baseline \
-	bench-gate audit ci clean docker-build help
+	bench-gate test-load perf perf-report perf-baseline perf-gate perf-seed perf-clean audit ci \
+	clean docker-build help
 
 BINARY_NAME=REGIO
 
@@ -30,6 +31,13 @@ help:
 	@echo "  make test-smoke    - Subconjunto E2E rápido (smoke + CLI)"
 	@echo "  make test-fuzz     - Fuzzing nativo de Go con budget de tiempo (requiere plataforma con -fuzz)"
 	@echo "  make bench         - Benchmarks de los caminos calientes"
+	@echo "  make bench-gate    - Falla si hay regresión de allocs/B/op vs bench/baseline.txt"
+	@echo ""
+	@echo "  Rendimiento (ver perf/README.md para el protocolo):"
+	@echo "  make perf-seed SEED_N=100000 - Dataset de perf (rate_limits + events a escala)"
+	@echo "  make test-load              - Carga contra el proceso real (10/50/100/200)"
+	@echo "  make perf-report            - Agrega bench + carga + RSS en perf/report-*.txt"
+	@echo "  make perf                   - PUERTA PRINCIPAL: seed + bench + carga + informe"
 	@echo ""
 	@echo "  make audit         - go vet + gosec (falla ante hallazgos)"
 	@echo "  make ci            - Exactamente lo que ejecuta CI: test + race + e2e + audit"
@@ -47,10 +55,24 @@ run: build
 	./$(BINARY_NAME)
 
 # ⚠️  Claves de prueba — NO USAR EN PRODUCCIÓN
+# PERF_DB es siempre una BD aparte: el seed de perf nunca toca data/REGIO.db.
+PERF_DB=./data/perf/regio_perf.db
+# Volumen del dataset de perf. 10k para iterar rápido, 100k para medir el
+# crecimiento de rate_limits/events, 1M para el techo. Ver perf/README.md.
+SEED_N?=10000
+
 seed:
 	REGIO_DB_PATH=/tmp/regio_test.db \
 	MASTER_KEY=seed-master-key-for-testing-only-123 \
 	go run ./cmd/seed --force
+
+# Seed de rendimiento: escala las tablas del camino caliente de cada petición
+# (rate_limits lo lee/escribe CheckRateLimit, events lo escribe LogEvent).
+perf-seed:
+	@mkdir -p $(dir $(PERF_DB))
+	REGIO_DB_PATH=$(PERF_DB) \
+	MASTER_KEY=seed-master-key-for-testing-only-123 \
+	go run ./cmd/seed --force -rate-limits $(SEED_N) -events $(SEED_N)
 
 run-dbtest: seed build
 	REGIO_DB_PATH=/tmp/regio_test.db \
@@ -132,6 +154,80 @@ bench-gate:
 	BENCH_COUNT=$(BENCH_COUNT) sh scripts/bench_gate.sh gate
 
 # ---------------------------------------------------------------------------
+# Rendimiento — ver perf/README.md
+# ---------------------------------------------------------------------------
+
+# Carga contra el proceso real. El generador es un main aparte
+# (scripts/perf/loadgen.go): no toca código de producción y lee el RSS del
+# servidor por /proc/<pid>/status.
+#
+#   make test-load                       # rampa 10/50/100/200, dataset de 10k
+#   make test-load SEED_N=100000         # con dataset grande
+#   make test-load PERF_LEVELS=50,100    # niveles concretos
+PERF_LEVELS?=10,50,100,200
+PERF_DURATION?=10s
+PERF_WARMUP?=3s
+PERF_PROFILES?=health,proxy,auth
+PERF_PORT?=19090
+PERF_OUT?=perf/load-$(shell date +%Y%m%d-%H%M%S).json
+
+test-load: build
+	@mkdir -p perf
+	go run scripts/perf/loadgen.go \
+		-binary ./$(BINARY_NAME) \
+		-db $(PERF_DB) \
+		-port $(PERF_PORT) \
+		-profiles $(PERF_PROFILES) \
+		-levels $(PERF_LEVELS) \
+		-duration $(PERF_DURATION) \
+		-warmup $(PERF_WARMUP) \
+		-out $(PERF_OUT)
+
+# Micro-benchmarks a fichero: es la entrada que consume report.sh.
+BENCH_OUT?=perf/bench.txt
+bench-file:
+	@mkdir -p perf
+	$(TEST_KEY) go test -run=^$$ -bench=. -benchmem -benchtime=200ms -count=$(BENCH_COUNT) \
+		$(BENCH_PKGS) | tee $(BENCH_OUT)
+
+# Informe agregado. NO ejecuta las mediciones: use `make perf` para eso.
+#   make perf-report BENCH_FILE=perf/bench.txt LOAD_JSON=perf/load-*.json
+PERF_REPORT_STAMP?=$(shell date +%Y%m%d-%H%M%S)
+PERF_REPORT_BASE?=perf/report-$(PERF_REPORT_STAMP)
+BENCH_FILE?=perf/bench.txt
+LOAD_JSON?=$(shell ls -t perf/load-*.json 2>/dev/null | head -1)
+
+perf-report:
+	@mkdir -p perf
+	sh scripts/perf/report.sh "$(BENCH_FILE)" "$(LOAD_JSON)" "$(PERF_REPORT_BASE)"
+
+# Genera (o regenera) la referencia local de carga contra la que compara
+# perf-gate. Es una copia del JSON de la última corrida considerada buena.
+perf-baseline:
+	@mkdir -p perf
+	@if [ -z "$(LOAD_JSON)" ] || [ ! -r "$(LOAD_JSON)" ]; then \
+		echo "perf-baseline: no hay JSON de carga. Ejecuta primero: make test-load"; exit 1; \
+	fi
+	@cp "$(LOAD_JSON)" perf/load-baseline.json
+	@echo "perf-baseline: referencia en perf/load-baseline.json"
+
+# Gate local de rendimiento. NO se ejecuta en CI a propósito: RPS y p95 dependen
+# de la CPU y de la carga de la máquina, así que solo valdría en la máquina que
+# lo generó.
+#
+#   make perf-gate                       # usa el último perf/load-*.json
+#   make perf-gate PERF_RSS_MAX_MIB=400  # techo absoluto de RSS
+#   make perf-gate PERF_P95_MAX_MS=50    # techo absoluto de p95
+PERF_RSS_MAX_MIB?=
+PERF_P95_MAX_MS?=
+perf-gate:
+	@sh scripts/perf_gate.sh "$(LOAD_JSON)" "$(PERF_RSS_MAX_MIB)" "$(PERF_P95_MAX_MS)"
+
+# PUERTA PRINCIPAL de rendimiento: dataset + micro-benchmarks + carga + informe.
+perf: perf-seed bench-file test-load perf-report
+	@echo "✔ make perf: informe en perf/report-*.txt y perf/report-*.md"
+
+# ---------------------------------------------------------------------------
 # Auditoría de código
 # ---------------------------------------------------------------------------
 
@@ -156,9 +252,18 @@ audit:
 ci: test test-race test-e2e audit
 	@echo "✔ make ci: suite completa + race + e2e + auditoría"
 
+# perf-clean quita solo los artefactos generados; no toca perf/load-baseline.json
+# ni perf/README.md, que sí están versionados. El glob empieza por dígito a
+# propósito: 'load-*.json' también se llevaría 'load-baseline.json'.
+perf-clean:
+	rm -f perf/bench.txt perf/load-[0-9]*.json
+	rm -f perf/report-*.txt perf/report-*.md
+	@echo "perf-clean: artefactos de rendimiento borrados (baseline conservado)"
+
 clean:
 	rm -f $(BINARY_NAME)
 	rm -rf data cover.out
+	$(MAKE) perf-clean
 	go clean
 
 docker-build:
