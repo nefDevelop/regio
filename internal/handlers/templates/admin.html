@@ -331,6 +331,7 @@
                   Gestionar
                 </button>
                 <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
+                <input type="hidden" id="public-hidden-{{.Host}}" value="{{if index $.Config.Publicos .Host}}1{{end}}">
                 <input type="hidden" id="geo-mode-hidden-{{.Host}}" value="{{index $.Config.GeoModes .Host}}">
                 <input type="hidden" id="geo-countries-hidden-{{.Host}}" value="{{index $.Config.GeoCountries .Host}}">
               </td>
@@ -1182,6 +1183,11 @@
         a("old_host", currentCspHost);
         a("host", currentCspHost);
         
+        // El campo `public` no venía en este formulario: update_service lo
+        // interpretaba como ausente → false, y guardar la CSP de un servicio
+        // PÚBLICO lo privatizaba en silencio. Se reenvía el flag guardado.
+        var pubInput = document.getElementById("public-hidden-" + currentCspHost);
+        a("public", pubInput && pubInput.value === "1" ? "on" : "");
         var row = document.getElementById("row-" + currentCspHost);
         var targetInput = row.querySelector("input[name='target']");
         a("target", targetInput ? targetInput.value : "");
