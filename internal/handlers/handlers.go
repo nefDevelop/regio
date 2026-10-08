@@ -1239,9 +1239,13 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw := &statusWriter{ResponseWriter: w, status: 200}
 	ip := getRealIP(r)
 
-	// Limitar tamaño de cuerpo de request a 10MB para peticiones proxy (prevenir agotamiento de memoria)
+	// Limitar tamaño de cuerpo de request a 30MB para peticiones proxy
+	// (prevenir agotamiento de memoria). El streaming por chunks no retiene
+	// el body entero en RAM; el tope es una red de seguridad por encima de
+	// los 25MB que acepta gOols, para que su error amable ("supera el
+	// tamaño máximo") llegue al cliente en vez de un502 opaco.
 	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-		r.Body = http.MaxBytesReader(sw, r.Body, 10*1024*1024)
+		r.Body = http.MaxBytesReader(sw, r.Body, 30*1024*1024)
 	}
 
 	// Sanitizar URI para logs (eliminar parámetros sensibles)
