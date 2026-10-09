@@ -331,6 +331,7 @@
                   Gestionar
                 </button>
                 <input type="hidden" id="csp-hidden-{{.Host}}" name="csp" value="{{index $.Config.CSPs .Host}}">
+                <input type="hidden" id="public-hidden-{{.Host}}" value="{{if index $.Config.Publicos .Host}}1{{end}}">
                 <input type="hidden" id="geo-mode-hidden-{{.Host}}" value="{{index $.Config.GeoModes .Host}}">
                 <input type="hidden" id="geo-countries-hidden-{{.Host}}" value="{{index $.Config.GeoCountries .Host}}">
               </td>
@@ -1114,7 +1115,11 @@
             var u = new URL(url);
             domain = u.origin;
           } else {
-            domain = url;
+            // blob:https://host/uuid, data:…: la fuente CSP válida es SOLO
+            // el esquema ("blob:", "data:"). La URI completa no es una fuente
+            // válida, el navegador la ignora y la violación seguía ocurriendo.
+            var schemeMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+.\-]*):/);
+            domain = schemeMatch ? schemeMatch[1] + ":" : url;
           }
           
           if (confirm("¿Deseas permitir el dominio " + domain + " para el host " + host + "?")) {
@@ -1152,8 +1157,18 @@
       function saveCspChanges() {
         var domains = currentCspItems.join(" ");
         var allDomains = domains.trim();
-        
-        var newCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' " + allDomains + "; style-src 'self' 'unsafe-inline' " + allDomains + "; img-src 'self' data: " + allDomains + "; connect-src 'self' " + allDomains + "; font-src 'self' " + allDomains + "; report-uri /api/csp-report";
+
+        // Fuentes por esquema (blob:, data:): solo en directivas de carga de
+        // recursos (style/img/font). En script-src o connect-src serían una
+        // relajación peligrosa (p. ej. data: en script-src permite scripts
+        // desde data URL). Los orígenes http(s) van a todas, como siempre.
+        var items = allDomains.length ? allDomains.split(/\s+/) : [];
+        var isScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:$/;
+        var origins = items.filter(function (d) { return !isScheme.test(d); }).join(" ");
+        var schemes = items.filter(function (d) { return isScheme.test(d); }).join(" ");
+        var resources = (origins + " " + schemes).trim();
+
+        var newCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' " + origins + "; style-src 'self' 'unsafe-inline' " + resources + "; img-src 'self' data: " + resources + "; connect-src 'self' " + origins + "; font-src 'self' " + resources + "; form-action 'self'; report-uri /api/csp-report";
 
         var f = document.createElement("form");
         f.method = "POST";
@@ -1168,6 +1183,11 @@
         a("old_host", currentCspHost);
         a("host", currentCspHost);
         
+        // El campo `public` no venía en este formulario: update_service lo
+        // interpretaba como ausente → false, y guardar la CSP de un servicio
+        // PÚBLICO lo privatizaba en silencio. Se reenvía el flag guardado.
+        var pubInput = document.getElementById("public-hidden-" + currentCspHost);
+        a("public", pubInput && pubInput.value === "1" ? "on" : "");
         var row = document.getElementById("row-" + currentCspHost);
         var targetInput = row.querySelector("input[name='target']");
         a("target", targetInput ? targetInput.value : "");

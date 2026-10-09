@@ -466,7 +466,7 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	for host, target := range Config.Servicios {
 		hostSuggestions[host] = true
-		
+
 		targetClean := target
 		if strings.HasPrefix(target, "http://") {
 			targetClean = strings.TrimPrefix(target, "http://")
@@ -504,8 +504,6 @@ func HandleAdmin(w http.ResponseWriter, r *http.Request) {
 			hostSuggestions[baseDomain] = true
 		}
 	}
-
-
 
 	var hosts []string
 	for h := range hostSuggestions {
@@ -1057,17 +1055,120 @@ func sanitizeCSPDirective(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// cspViolation es una violación CSP normalizada desde cualquier formato de
+// entrada admitido, lista para sanitizar y persistir. Los tags JSON son los
+// del formato plano de los navegadores (ver parseCSPReports).
+type cspViolation struct {
+	DocumentURI       string `json:"document-uri"`
+	ViolatedDirective string `json:"violated-directive"`
+	OriginalPolicy    string `json:"original-policy"`
+	BlockedURI        string `json:"blocked-uri"`
+}
+
+// apiReport es una entrada del Reporting API (application/reports+json):
+// [{"type":"csp-violation","url":"…","body":{…}}]. Chrome y Firefox modernos
+// envían así los informes de report-to/Reporting-Endpoints; el body usa
+// "document-url" en lugar del "document-uri" del formato clásico.
+type apiReport struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+	Body struct {
+		DocumentURL        string `json:"document-url"`
+		DocumentURI        string `json:"document-uri"`
+		BlockedURI         string `json:"blocked-uri"`
+		ViolatedDirective  string `json:"violated-directive"`
+		EffectiveDirective string `json:"effective-directive"`
+		OriginalPolicy     string `json:"original-policy"`
+	} `json:"body"`
+}
+
+// parseCSPReports normaliza los tres formatos de informe CSP admitidos a una
+// lista de violaciones:
+//
+//   - Reporting API (application/reports+json): array JSON con varias
+//     entradas; solo se procesan las de tipo "csp-violation".
+//   - Wrapper clásico {"csp-report":{…}} (application/csp-report).
+//   - Objeto plano {…} (algunos navegadores).
+//
+// Devuelve error solo si el cuerpo no es JSON parseable (→ 400).
+func parseCSPReports(body []byte) ([]cspViolation, error) {
+	s := strings.TrimSpace(string(body))
+
+	// Reporting API: array de entradas con tipo y cuerpo.
+	if strings.HasPrefix(s, "[") {
+		var batch []apiReport
+		if err := json.Unmarshal([]byte(s), &batch); err != nil {
+			return nil, err
+		}
+		violations := make([]cspViolation, 0, len(batch))
+		for _, entry := range batch {
+			if entry.Type != "" && entry.Type != "csp-violation" {
+				continue // otros tipos de informe no son violaciones CSP
+			}
+			doc := entry.Body.DocumentURL
+			if doc == "" {
+				doc = entry.Body.DocumentURI
+			}
+			if doc == "" {
+				doc = entry.URL // respaldo: la URL de la página del informe
+			}
+			directive := entry.Body.ViolatedDirective
+			if directive == "" {
+				directive = entry.Body.EffectiveDirective
+			}
+			violations = append(violations, cspViolation{
+				DocumentURI:       doc,
+				ViolatedDirective: directive,
+				OriginalPolicy:    entry.Body.OriginalPolicy,
+				BlockedURI:        entry.Body.BlockedURI,
+			})
+		}
+		return violations, nil
+	}
+
+	// Formato clásico: wrapper "csp-report" o el objeto plano.
+	var payload models.CSPReportPayload
+	if err := json.Unmarshal([]byte(s), &payload); err == nil &&
+		(payload.CSPReport.BlockedURI != "" || payload.CSPReport.ViolatedDirective != "") {
+		return []cspViolation{{
+			DocumentURI:       payload.CSPReport.DocumentURI,
+			ViolatedDirective: payload.CSPReport.ViolatedDirective,
+			OriginalPolicy:    payload.CSPReport.OriginalPolicy,
+			BlockedURI:        payload.CSPReport.BlockedURI,
+		}}, nil
+	}
+
+	var flat cspViolation
+	if err := json.Unmarshal([]byte(s), &flat); err != nil {
+		return nil, err
+	}
+	return []cspViolation{flat}, nil
+}
+
 func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Validar Content-Type (solo application/json o application/csp-report)
-	ct := r.Header.Get("Content-Type")
-	if ct != "application/json" && ct != "application/csp-report" && ct != "" {
-		http.Error(w, "Tipo de contenido no soportado", http.StatusUnsupportedMediaType)
-		return
+	// Validar Content-Type: application/json, application/csp-report y
+	// application/reports+json (Reporting API de los navegadores modernos,
+	// que usan report-to/Reporting-Endpoints; antes devolvían 415 y los
+	// informes reales se perdían). Se compara el tipo base para tolerar
+	// parámetros como "; charset=utf-8". Cualquier otro tipo → 415
+	// (contrato con TestHandleCSPReportContentType).
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		mediaType, _, err := mime.ParseMediaType(ct)
+		if err != nil {
+			http.Error(w, "Tipo de contenido no soportado", http.StatusUnsupportedMediaType)
+			return
+		}
+		switch mediaType {
+		case "application/json", "application/csp-report", "application/reports+json":
+		default:
+			http.Error(w, "Tipo de contenido no soportado", http.StatusUnsupportedMediaType)
+			return
+		}
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 10*1024)
@@ -1079,39 +1180,27 @@ func HandleCSPReport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// Intentar parsear con el wrapper "csp-report"
-	var payload models.CSPReportPayload
-	var report struct {
-		DocumentURI       string `json:"document-uri"`
-		ViolatedDirective string `json:"violated-directive"`
-		OriginalPolicy    string `json:"original-policy"`
-		BlockedURI        string `json:"blocked-uri"`
+	violations, err := parseCSPReports(body)
+	if err != nil {
+		log.Printf("%s Error parseando reporte CSP: %v (Body: %s)", db.PrefixERR, err, db.SanitizeLog(string(body)))
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
-	if err := json.Unmarshal(body, &payload); err == nil && (payload.CSPReport.BlockedURI != "" || payload.CSPReport.ViolatedDirective != "") {
-		report.DocumentURI = payload.CSPReport.DocumentURI
-		report.ViolatedDirective = payload.CSPReport.ViolatedDirective
-		report.OriginalPolicy = payload.CSPReport.OriginalPolicy
-		report.BlockedURI = payload.CSPReport.BlockedURI
-	} else {
-		// Intentar parsear el objeto plano (algunos navegadores)
-		if err := json.Unmarshal(body, &report); err != nil {
-			log.Printf("%s Error parseando reporte CSP: %v (Body: %s)", db.PrefixERR, err, db.SanitizeLog(string(body)))
-			w.WriteHeader(http.StatusBadRequest)
-			return
+	for _, report := range violations {
+		// Fix S1: sanitizar TODOS los campos antes de persistirlos. El panel los
+		// renderiza (y antes lo hacía vía innerHTML): un blocked-uri con <img
+		// onerror=...> era XSS almacenado desde un endpoint sin autenticación.
+		report.BlockedURI = sanitizeCSPText(report.BlockedURI, 512)
+		report.ViolatedDirective = sanitizeCSPDirective(report.ViolatedDirective)
+		report.OriginalPolicy = sanitizeCSPText(report.OriginalPolicy, 1024)
+		report.DocumentURI = sanitizeCSPText(report.DocumentURI, 1024)
+
+		// Guardar reporte si hay URI bloqueada O si hay directiva violada (para inline/eval)
+		if report.BlockedURI == "" && report.ViolatedDirective == "" {
+			continue
 		}
-	}
 
-	// Fix S1: sanitizar TODOS los campos antes de persistirlos. El panel los
-	// renderiza (y antes lo hacía vía innerHTML): un blocked-uri con <img
-	// onerror=...> era XSS almacenado desde un endpoint sin autenticación.
-	report.BlockedURI = sanitizeCSPText(report.BlockedURI, 512)
-	report.ViolatedDirective = sanitizeCSPDirective(report.ViolatedDirective)
-	report.OriginalPolicy = sanitizeCSPText(report.OriginalPolicy, 1024)
-	report.DocumentURI = sanitizeCSPText(report.DocumentURI, 1024)
-
-	// Guardar reporte si hay URI bloqueada O si hay directiva violada (para inline/eval)
-	if report.BlockedURI != "" || report.ViolatedDirective != "" {
 		host := r.Host
 		if report.DocumentURI != "" {
 			if u, err := url.Parse(report.DocumentURI); err == nil {
@@ -1150,9 +1239,13 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	sw := &statusWriter{ResponseWriter: w, status: 200}
 	ip := getRealIP(r)
 
-	// Limitar tamaño de cuerpo de request a 10MB para peticiones proxy (prevenir agotamiento de memoria)
+	// Limitar tamaño de cuerpo de request a 30MB para peticiones proxy
+	// (prevenir agotamiento de memoria). El streaming por chunks no retiene
+	// el body entero en RAM; el tope es una red de seguridad por encima de
+	// los 25MB que acepta gOols, para que su error amable ("supera el
+	// tamaño máximo") llegue al cliente en vez de un502 opaco.
 	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-		r.Body = http.MaxBytesReader(sw, r.Body, 10*1024*1024)
+		r.Body = http.MaxBytesReader(sw, r.Body, 30*1024*1024)
 	}
 
 	// Sanitizar URI para logs (eliminar parámetros sensibles)
