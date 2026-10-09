@@ -19,8 +19,8 @@ import (
 var dbPath = "./data/REGIO_TEST.db"
 
 // Flags de volumen. Los valores por defecto reproducen exactamente el seed
-// original (70 rate_limits, 20 eventos) para no alterar `make run-dbtest`.
-// `make seed SEED_N=100000` escala las tablas del camino caliente de cada petición:
+// original (70 rate_limits, 20 eventos) para no alterar `make demo`.
+// `make perf-seed SEED_N=100000` escala las tablas del camino caliente de cada petición:
 // rate_limits (lectura/escritura en CheckRateLimit) y events (LogEvent por request).
 var (
 	flagForce      = flag.Bool("force", false, "Sobrescribe la base de datos si ya existe")
@@ -61,7 +61,7 @@ func main() {
 
 	fmt.Printf("\n[OK] Base de datos de prueba creada: %s (%.1fs)\n", dbPath, elapsed.Seconds())
 	printDatasetSummary(DB)
-	fmt.Println("[INFO] Ejecuta: make run-dbtest")
+	fmt.Println("[INFO] Ejecuta: make demo")
 	fmt.Println()
 }
 
@@ -207,7 +207,10 @@ func seedData(DB *sql.DB) {
 		DB.Exec("INSERT OR IGNORE INTO users (id, username, password_hash, totp_secret, is_admin, totp_active) VALUES (?, ?, ?, ?, ?, ?)",
 			u.id, u.username, pwHash, totpEnc, isAdmin, totpActive)
 	}
-	fmt.Println("  • 3 usuarios (admin/devops/lector, pass: SeedPassXXX!)")
+	fmt.Println("  • 3 usuarios demo:")
+	fmt.Println("      admin  / SeedPass123! (admin)")
+	fmt.Println("      devops / SeedPass456! (admin)")
+	fmt.Println("      lector / SeedPass789! (solo lectura)")
 
 	sessions := []struct {
 		userID   int

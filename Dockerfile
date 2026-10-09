@@ -10,7 +10,7 @@ FROM alpine:latest
 
 LABEL org.opencontainers.image.title="reGIO" \
       org.opencontainers.image.description="Reverse proxie in Go" \
-      org.opencontainers.image.source="https://github.com/user/regio"
+      org.opencontainers.image.source="https://github.com/nefDevelop/regio"
 
 RUN apk upgrade --no-cache && \
     apk add --no-cache ca-certificates tzdata libcap mailcap && \
@@ -28,6 +28,6 @@ USER regio
 EXPOSE 80 443
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/REGIO-login || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
 
 CMD ["./REGIO"]

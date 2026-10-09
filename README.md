@@ -219,8 +219,8 @@ Cada servicio puede tener su propia política CSP. Las violaciones se reportan a
 
 ```bash
 make build          # Compilar el binario
-make seed           # Generar DB de prueba en /tmp
-make run-dbtest     # Ejecutar con datos de prueba (puerto 9090)
+make demo           # Rellenar DB demo y levantar el servidor (puerto 9090)
+make seed           # Solo generar DB demo en /tmp (sin servidor)
 make docker-build   # Construir imagen Docker
 make audit          # go vet + gosec (falla ante hallazgos fuera del baseline)
 make help           # Lista completa de targets

@@ -76,7 +76,7 @@ Costes medidos en esta máquina (Ryzen 5 5600X, NVMe):
 | 1.000.000 | 11,8 s | 294,1 MiB |
 
 Los 70 `rate_limits` y 20 `events` del seed original se conservan tal cual con
-los valores por defecto, para no alterar `make run-dbtest`.
+los valores por defecto, para no alterar `make demo`.
 
 ## Protocolo de medición
 

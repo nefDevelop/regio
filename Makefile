@@ -3,7 +3,7 @@
 #      openssl rand -base64 32
 #    y defínela en tu archivo .env (ver .env.example).
 
-.PHONY: build run run-dbtest seed test test-unit test-integration test-contract \
+.PHONY: build run demo seed test test-unit test-integration test-contract \
 	test-cover test-race test-e2e test-smoke test-fuzz bench bench-baseline \
 	bench-gate test-load perf perf-report perf-baseline perf-gate perf-seed perf-clean audit ci \
 	clean docker-build help
@@ -17,8 +17,8 @@ help:
 	@echo "Comandos disponibles:"
 	@echo "  make build         - Compila la aplicación"
 	@echo "  make run           - Ejecuta la aplicación (requiere .env o variables de entorno)"
-	@echo "  make run-dbtest    - Ejecuta con datos de prueba (seed + run, SOLO desarrollo)"
-	@echo "  make seed          - Genera DB de prueba en /tmp/regio_test.db"
+	@echo "  make demo          - Rellena DB demo y levanta el servidor (puerto 9090, SOLO desarrollo)"
+	@echo "  make seed          - Solo genera DB demo en /tmp/regio_test.db (sin servidor)"
 	@echo ""
 	@echo "  Pruebas (todo se orquesta vía make):"
 	@echo "  make test          - PUERTA PRINCIPAL: unitarios rápidos + suite completa con gate de cobertura"
@@ -74,7 +74,13 @@ perf-seed:
 	MASTER_KEY=seed-master-key-for-testing-only-123 \
 	go run ./cmd/seed --force -rate-limits $(SEED_N) -events $(SEED_N)
 
-run-dbtest: seed build
+demo: seed build
+	@echo ""
+	@echo "Demo en http://localhost:9090 (SOLO desarrollo, no usar en producción):"
+	@echo "  admin  / SeedPass123! (admin)"
+	@echo "  devops / SeedPass456! (admin)"
+	@echo "  lector / SeedPass789! (solo lectura)"
+	@echo ""
 	REGIO_DB_PATH=/tmp/regio_test.db \
 	MASTER_KEY=seed-master-key-for-testing-only-123 \
 	ADMIN_DOMAIN=localhost \
