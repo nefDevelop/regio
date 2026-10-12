@@ -199,7 +199,7 @@ Cliente → SecurityEngine → Auth → Proxy → Backend
 - **IP/Subnet blocking**: 5 fallos → 15 min bloqueo individual; 15 fallos → 1h bloqueo de /24
 - **Rate limiting**: 100 peticiones/minuto por (IP, servicio) con techo global de 300/min por IP entre todos los servicios (persistido en SQLite)
 - **User rate limiting**: 10 fallos de login por username → 30 min bloqueo (anti-botnet distribuido)
-- **WAF**: Detecta path traversal (`../`, `..\\`), SQL injection (`' OR 1=1--`, `UNION SELECT`), XSS (`<script>`, `onerror=`) y User-Agent de scanners
+- **WAF**: Detecta path traversal (`../`, `..\\`), SQL injection (`' OR 1=1--`, `UNION SELECT`), XSS (`<script>`, `onerror=`) y User-Agent de scanners sobre URI, query string y User-Agent (no inspecciona body ni resto de cabeceras)
 - **SSRF Protection**: Validación DNS en tiempo real en `DialContext` — bloquea loopback, link-local, RFC 1918 (salvo autorización explícita)
 - **Fail2Ban**: Persistente en SQLite, sobrevive reinicios del servidor
 - **CSRF**: Tokens por sesión almacenados en DB, sobreviven reinicios
